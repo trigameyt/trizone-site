@@ -1,0 +1,7 @@
+# URL publique de ton site Trizone
+api-url: "https://trizone.club/api/minecraft/link/confirm"
+
+# DOIT être exactement identique à MINECRAFT_LINK_SECRET du site.
+secret: "CHANGE_ME"
+
+timeout-seconds: 8
