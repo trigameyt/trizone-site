@@ -1,14 +1,90 @@
 <!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Informations — Trizone</title><link rel="stylesheet" href="/style.css"><script defer src="/components.js"></script><script defer src="/common.js"></script></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Informations légales — Trizone</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/components.js"></script>
+  <script defer src="/common.js"></script>
+  <script defer src="/legal.js"></script>
+</head>
 <body>
-<div id="site-header"></div>
-<main><section class="page-hero"><div class="container"><div class="page-title"><div><div class="kicker">Informations</div><h1>Confi<span class="accent">ance</span></h1></div><p>Cette page contient une base à personnaliser avant l’ouverture publique. Ajoute ton adresse de contact et les mentions exigées dans ton pays.</p></div></div></section>
-<section class="section" style="padding-top:20px"><div class="container account-stack">
-  <article class="card"><h2>Indépendance</h2><p>CECI N’EST PAS UN SERVICE MINECRAFT OFFICIEL. CE SITE N’EST PAS APPROUVÉ PAR MOJANG OU MICROSOFT, NI ASSOCIÉ À EUX.</p></article>
-  <article class="card"><h2>Confidentialité</h2><p>Le site conserve les informations nécessaires au compte : identifiant et profil Discord, UUID/pseudo Minecraft lié, ainsi que les événements de paiement reçus depuis Tebex. Aucun mot de passe Discord ni donnée bancaire n’est stocké par Trizone.</p><p style="margin-top:12px"><strong>À compléter :</strong> adresse e-mail de contact, durée de conservation, procédure de suppression du compte et identité du responsable du site.</p></article>
-  <article class="card" id="conditions"><h2>Conditions de la boutique</h2><p>Les paiements sont traités par Tebex. Les produits, prix, remboursements et conditions applicables doivent être clairement présentés avant l’ouverture. Les avantages vendus sur un serveur Minecraft doivent respecter les règles de monétisation Minecraft en vigueur.</p></article>
-</div></section></main>
-<div id="site-footer"></div>
-<script>document.addEventListener('DOMContentLoaded',()=>{trizoneHeader('');trizoneFooter();Trizone.boot();});</script>
-</body></html>
+  <div id="site-header"></div>
+  <main>
+    <section class="page-head">
+      <div class="container">
+        <p class="eyebrow">Informations & conditions</p>
+        <h1>Trizone en clair</h1>
+        <p>Coordonnées, fonctionnement de la boutique et traitement des données. Cette page est rédigée pour un site exploité depuis la Suisse.</p>
+      </div>
+    </section>
+
+    <section class="section compact">
+      <div class="container legal-layout">
+        <aside class="legal-nav">
+          <a href="#operator">Exploitant</a>
+          <a href="#conditions">Boutique</a>
+          <a href="#delivery">Livraison & remboursements</a>
+          <a href="#privacy">Confidentialité</a>
+          <a href="#minecraft">Minecraft</a>
+        </aside>
+
+        <div class="legal-content">
+          <div id="legal-warning" class="notice bad" hidden>Les coordonnées de l’exploitant ne sont pas encore complètes. Renseigne-les dans le panel admin avant d’ouvrir les paiements au public.</div>
+
+          <article class="panel" id="operator">
+            <h2>Exploitant du site</h2>
+            <div class="legal-contact">
+              <div><span>Identité / nom</span><strong id="operator-name">À renseigner</strong></div>
+              <div><span>Adresse de contact</span><strong id="operator-address">À renseigner</strong></div>
+              <div><span>E-mail</span><strong id="operator-email">À renseigner</strong></div>
+            </div>
+            <p>Ces informations servent à identifier clairement la personne ou l’entité qui exploite Trizone et à fournir un moyen de contact direct.</p>
+          </article>
+
+          <article class="panel" id="conditions">
+            <h2>Boutique et conclusion d’un achat</h2>
+            <p>La boutique de Trizone affiche les produits configurés dans Tebex. Tebex traite le paiement en tant que <em>Merchant of Record</em> et affiche le total final, les taxes applicables et ses propres conditions au moment du checkout.</p>
+            <ol class="steps">
+              <li>Le joueur choisit un produit sur la boutique Trizone.</li>
+              <li>Il vérifie le compte Discord et le pseudo Minecraft liés à son profil.</li>
+              <li>Le bouton <strong>Acheter</strong> crée un panier Tebex.</li>
+              <li>Le joueur peut vérifier les informations et le prix dans le checkout Tebex avant de payer.</li>
+              <li>La commande est confirmée électroniquement par Tebex, puis la livraison est envoyée au serveur.</li>
+            </ol>
+            <p>Pour une boutique destinée à la clientèle suisse, configure les prix principaux en CHF dans Tebex et vérifie que le total affiché au client correspond bien au prix effectivement dû.</p>
+          </article>
+
+          <article class="panel" id="delivery">
+            <h2>Livraison, support et remboursements</h2>
+            <p>Les avantages numériques sont normalement livrés automatiquement par le plugin Tebex après confirmation du paiement. En cas de problème de livraison, contacte Trizone avec le pseudo Minecraft et la référence de paiement.</p>
+            <p>Les demandes de remboursement suivent la politique affichée par Tebex et les règles applicables au checkout. Le droit suisse ne prévoit pas de droit général de révocation pour tous les achats effectués sur Internet ; d’éventuels droits supplémentaires peuvent toutefois résulter des conditions Tebex ou du droit applicable à la transaction.</p>
+            <div id="extra-terms" class="legal-extra" hidden></div>
+          </article>
+
+          <article class="panel" id="privacy">
+            <h2>Confidentialité</h2>
+            <p>Trizone ne stocke ni ton mot de passe Discord ni tes données de carte bancaire. Le site utilise les données nécessaires au fonctionnement du compte et de la boutique :</p>
+            <ul>
+              <li>identifiant, pseudo et avatar Discord obtenus via OAuth2 ;</li>
+              <li>pseudo, UUID et grade Minecraft lorsque le compte est lié ;</li>
+              <li>codes temporaires de liaison ;</li>
+              <li>événements techniques reçus de Tebex pour afficher l’historique et suivre la livraison.</li>
+            </ul>
+            <p>Les données peuvent être traitées par les prestataires utilisés pour faire fonctionner le service, notamment Discord (connexion), Render (hébergement), Supabase/PostgreSQL (base de données) et Tebex (boutique et paiement). Tebex reçoit directement les informations de paiement nécessaires à la transaction.</p>
+            <p>Tu peux demander l’accès, la rectification ou la suppression des données personnelles traitées par Trizone en utilisant l’adresse ci-dessous. Certaines données liées à une transaction peuvent devoir être conservées par le prestataire de paiement selon ses propres obligations.</p>
+            <div class="legal-contact single"><div><span>Contact vie privée</span><strong id="privacy-email">À renseigner</strong></div></div>
+          </article>
+
+          <article class="panel" id="minecraft">
+            <h2>Minecraft</h2>
+            <p>Trizone est un serveur communautaire indépendant. Ce site et ses services ne sont pas approuvés, sponsorisés ou associés à Mojang Studios ou Microsoft.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div id="site-footer"></div>
+</body>
+</html>

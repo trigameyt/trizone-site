@@ -1,20 +1,31 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Boutique — Trizone</title>
   <link rel="stylesheet" href="/style.css">
-  <script defer src="/components.js"></script><script defer src="/common.js"></script><script defer src="/shop.js"></script>
+  <script defer src="/components.js"></script>
+  <script defer src="/common.js"></script>
+  <script defer src="/shop.js"></script>
 </head>
 <body>
   <div id="site-header"></div>
   <main>
-    <section class="page-hero"><div class="container"><div class="page-title"><div><div class="kicker">Tebex Headless</div><h1>Bouti<span class="accent">que</span></h1></div><p>Les produits et prix sont chargés depuis ton webstore Tebex. Pour acheter, connecte ton compte Discord et lie ton compte Minecraft.</p></div></div></section>
-    <section class="section" style="padding-top:20px"><div class="container">
-      <div id="shop-notice" class="notice">Chargement de la boutique…</div>
-      <div id="shop-tabs" class="shop-toolbar"></div>
-      <div id="products" class="products"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
-    </div></section>
+    <section class="page-head">
+      <div class="container">
+        <p class="eyebrow">Boutique officielle</p>
+        <h1>Boutique</h1>
+        <p>Les produits viennent directement de Tebex. Connecte ton compte et lie Minecraft avant l’achat pour que la livraison arrive au bon joueur.</p>
+      </div>
+    </section>
+    <section class="section compact">
+      <div class="container">
+        <div id="shop-notice" class="notice">Chargement de la boutique…</div>
+        <div id="shop-tabs" class="shop-tabs"></div>
+        <div id="products" class="products"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
+    </section>
   </main>
   <div id="site-footer"></div>
 </body>

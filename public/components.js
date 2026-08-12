@@ -1,45 +1,46 @@
 function trizoneHeader(active = '') {
-  const nav = document.getElementById('site-header');
-  if (!nav) return;
-  nav.innerHTML = `
-    <div class="nav-shell">
+  const root = document.getElementById('site-header');
+  if (!root) return;
+  root.innerHTML = `
+    <header class="topbar">
       <div class="container nav">
-        <a class="brand" href="/">
-          <img class="brand-mark" src="/assets/trizone-logo-square.jpg" alt="Logo Trizone">
-          <div class="brand-name">TRI<span>ZONE</span></div>
+        <a class="brand" href="/" aria-label="Accueil Trizone">
+          <img src="/assets/trizone-logo-square.jpg" alt="" class="brand-mark">
+          <span>TRIZONE</span>
         </a>
-        <nav class="nav-links">
+        <button class="menu-button" type="button" data-mobile-toggle aria-label="Ouvrir le menu" aria-expanded="false">Menu</button>
+        <nav class="nav-links" aria-label="Navigation principale">
           <a class="${active === 'home' ? 'active' : ''}" href="/">Accueil</a>
           <a class="${active === 'shop' ? 'active' : ''}" href="/shop.html">Boutique</a>
           <a class="${active === 'account' ? 'active' : ''}" href="/account.html">Compte</a>
-          <a class="${active === 'admin' ? 'active' : ''}" href="/admin.html" data-admin-link hidden>Admin</a>
-          <a href="/legal.html">Infos</a>
+          <a class="${active === 'admin' ? 'active' : ''}" href="/admin.html" data-auth="admin" hidden>Admin</a>
+          <a class="${active === 'legal' ? 'active' : ''}" href="/legal.html">Infos</a>
         </nav>
         <div class="nav-actions">
-          <button class="btn btn-small btn-ghost mobile-toggle" data-mobile-toggle aria-label="Menu">☰</button>
-          <a class="btn btn-small btn-ghost" href="/account.html" data-account hidden>Compte</a>
-          <a class="btn btn-small btn-primary" href="/auth/discord" data-login>Connexion Discord</a>
+          <a class="btn btn-quiet btn-small" href="/account.html" data-auth="user" hidden data-account-label>Mon compte</a>
+          <a class="btn btn-primary btn-small" href="/auth/discord" data-auth="guest" hidden>Connexion Discord</a>
         </div>
       </div>
-    </div>`;
+    </header>`;
 }
 
 function trizoneFooter() {
-  const footer = document.getElementById('site-footer');
-  if (!footer) return;
-  footer.innerHTML = `
-    <footer>
+  const root = document.getElementById('site-footer');
+  if (!root) return;
+  root.innerHTML = `
+    <footer class="footer">
       <div class="container footer-grid">
         <div>
-          <div class="footer-brand">TRIZONE</div>
-          <div>play.trizone.club</div>
-          <div style="max-width:660px;margin-top:10px">CECI N’EST PAS UN SERVICE MINECRAFT OFFICIEL. CE SITE N’EST PAS APPROUVÉ PAR MOJANG OU MICROSOFT, NI ASSOCIÉ À EUX.</div>
+          <div class="footer-title">TRIZONE</div>
+          <div class="muted" data-site-text="server_address">play.trizone.club</div>
+          <p class="footer-note">Serveur Minecraft communautaire Java & Bedrock.</p>
         </div>
         <div class="footer-links">
-          <a href="/legal.html">Confidentialité</a>
+          <a href="/legal.html#privacy">Confidentialité</a>
           <a href="/legal.html#conditions">Conditions</a>
           <a href="/shop.html">Boutique</a>
         </div>
       </div>
+      <div class="container minecraft-disclaimer">Non officiel. Trizone n’est ni approuvé, ni associé à Mojang ou Microsoft.</div>
     </footer>`;
 }

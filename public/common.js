@@ -1,12 +1,9 @@
 const Trizone = (() => {
-  const state = { me: null };
+  const state = { me: { authenticated: false }, config: {} };
 
   const escapeHtml = (text = '') => String(text)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
   const stripHtml = (html = '') => {
     const el = document.createElement('div');
@@ -15,90 +12,139 @@ const Trizone = (() => {
   };
 
   async function json(url, options = {}) {
-    const response = await fetch(url, {
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      ...options,
-    });
+    const headers = { ...(options.headers || {}) };
+    if (options.body != null && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `Erreur HTTP ${response.status}`);
     return data;
   }
 
-  function setupMobileNav() {
-    const toggle = document.querySelector('[data-mobile-toggle]');
-    const links = document.querySelector('.nav-links');
-    toggle?.addEventListener('click', () => links?.classList.toggle('open'));
+  function rankClass(rank = '') {
+    const key = String(rank).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const known = ['default', 'copper', 'iron', 'gold', 'diamond', 'netherite', 'vip', 'owner', 'admin', 'mod', 'helper'];
+    return known.includes(key) ? `rank-${key}` : 'rank-default';
+  }
+
+  function rankLabel(rank = '') {
+    const value = String(rank || 'default').trim();
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Default';
+  }
+
+  function setAuthVisibility(me) {
+    document.querySelectorAll('[data-auth="guest"]').forEach((el) => { el.hidden = !!me.authenticated; });
+    document.querySelectorAll('[data-auth="user"]').forEach((el) => { el.hidden = !me.authenticated; });
+    document.querySelectorAll('[data-auth="admin"]').forEach((el) => { el.hidden = !me.authenticated || !me.admin; });
+
+    document.querySelectorAll('[data-account-label]').forEach((el) => {
+      if (!me.authenticated) return;
+      const name = me.user.discord_global_name || me.user.discord_username || 'Compte';
+      const rank = me.user.minecraft_rank && me.user.minecraft_username ? ` · ${rankLabel(me.user.minecraft_rank)}` : '';
+      el.textContent = `${name}${rank}`;
+    });
   }
 
   async function loadMe() {
-    try {
-      state.me = await json('/api/me');
-    } catch {
-      state.me = { authenticated: false };
-    }
-
-    const login = document.querySelector('[data-login]');
-    const account = document.querySelector('[data-account]');
-    const admin = document.querySelector('[data-admin-link]');
-
-    if (state.me.authenticated) {
-      if (login) login.hidden = true;
-      if (account) {
-        account.hidden = false;
-        const name = state.me.user.discord_global_name || state.me.user.discord_username;
-        account.textContent = name;
-      }
-      if (admin) admin.hidden = !state.me.admin;
-    } else {
-      if (login) login.hidden = false;
-      if (account) account.hidden = true;
-      if (admin) admin.hidden = true;
-    }
+    try { state.me = await json('/api/me'); }
+    catch { state.me = { authenticated: false }; }
+    setAuthVisibility(state.me);
     return state.me;
   }
 
-  async function loadAnnouncement() {
-    const box = document.querySelector('[data-announcement]');
-    if (!box) return;
-    try {
-      const data = await json('/api/announcement');
-      if (data.value) {
-        box.textContent = data.value;
-        box.classList.add('show');
-      }
-    } catch {}
+  async function loadSiteConfig() {
+    try { state.config = await json('/api/site-config'); }
+    catch { state.config = {}; }
+    applySiteConfig(state.config);
+    return state.config;
+  }
+
+  function applySiteConfig(config = {}) {
+    document.querySelectorAll('[data-site-text]').forEach((el) => {
+      const key = el.dataset.siteText;
+      if (config[key] != null && config[key] !== '') el.textContent = config[key];
+    });
+    document.querySelectorAll('[data-site-href]').forEach((el) => {
+      const key = el.dataset.siteHref;
+      const value = config[key];
+      if (value) { el.href = value; el.hidden = false; }
+      else { el.hidden = true; }
+    });
+    document.querySelectorAll('[data-server-address]').forEach((el) => {
+      const value = config.server_address || 'play.trizone.club';
+      if (el.matches('[data-copy]')) el.dataset.copy = value;
+      if (el.matches('code,span,strong')) el.textContent = value;
+    });
+    const announcement = document.querySelector('[data-announcement]');
+    if (announcement) {
+      const value = String(config.announcement || '').trim();
+      announcement.textContent = value;
+      announcement.hidden = !value;
+    }
+  }
+
+  function setupMobileNav() {
+    const toggle = document.querySelector('[data-mobile-toggle]');
+    const links = document.querySelector('.nav-links');
+    if (!toggle || !links) return;
+    toggle.addEventListener('click', () => {
+      const open = links.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+    links.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => links.classList.remove('open')));
+  }
+
+  async function copyText(value) {
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+    const temp = document.createElement('textarea');
+    temp.value = value; temp.style.position = 'fixed'; temp.style.opacity = '0';
+    document.body.appendChild(temp); temp.select(); document.execCommand('copy'); temp.remove();
   }
 
   function setupCopyButtons() {
-    document.querySelectorAll('[data-copy]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const value = button.getAttribute('data-copy');
-        await navigator.clipboard.writeText(value);
+    document.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-copy]');
+      if (!button) return;
+      try {
+        await copyText(button.dataset.copy || '');
         const old = button.textContent;
-        button.textContent = 'Copié ✓';
-        setTimeout(() => button.textContent = old, 1400);
-      });
+        button.textContent = 'Copié';
+        showToast('Adresse copiée.');
+        setTimeout(() => { button.textContent = old; }, 1200);
+      } catch { showToast('Impossible de copier automatiquement.', 'bad'); }
     });
   }
 
   function setupLogout() {
-    document.querySelectorAll('[data-logout]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        try { await json('/auth/logout', { method: 'POST', body: '{}' }); } catch {}
-        location.href = '/';
-      });
+    document.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-logout]');
+      if (!button) return;
+      button.disabled = true;
+      await json('/auth/logout', { method: 'POST', body: '{}' }).catch(() => {});
+      location.href = '/';
     });
   }
 
-  function boot() {
+  function showToast(message, type = '') {
+    let toast = document.getElementById('site-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'site-toast';
+      toast.className = 'toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.className = `toast show ${type}`;
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(() => { toast.className = 'toast'; }, 2600);
+  }
+
+  async function boot() {
     setupMobileNav();
     setupCopyButtons();
     setupLogout();
-    loadMe();
-    loadAnnouncement();
+    const [me, config] = await Promise.all([loadMe(), loadSiteConfig()]);
+    return { me, config };
   }
 
-  return { state, json, escapeHtml, stripHtml, loadMe, boot };
+  return { state, json, escapeHtml, stripHtml, rankClass, rankLabel, loadMe, loadSiteConfig, applySiteConfig, showToast, boot };
 })();
-

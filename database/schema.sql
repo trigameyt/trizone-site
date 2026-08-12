@@ -13,9 +13,12 @@ CREATE TABLE IF NOT EXISTS minecraft_accounts (
     discord_id TEXT NOT NULL UNIQUE REFERENCES users(discord_id) ON DELETE CASCADE,
     minecraft_uuid TEXT NOT NULL UNIQUE,
     minecraft_username TEXT NOT NULL,
+    minecraft_rank TEXT NOT NULL DEFAULT 'default',
     linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE minecraft_accounts ADD COLUMN IF NOT EXISTS minecraft_rank TEXT NOT NULL DEFAULT 'default';
 
 CREATE TABLE IF NOT EXISTS link_codes (
     code TEXT PRIMARY KEY,
@@ -38,9 +41,6 @@ CREATE TABLE IF NOT EXISTS site_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO site_settings(key, value)
-VALUES ('announcement', 'Bienvenue sur Trizone !')
-ON CONFLICT (key) DO NOTHING;
-
 CREATE INDEX IF NOT EXISTS idx_tebex_events_type ON tebex_events(type);
 CREATE INDEX IF NOT EXISTS idx_tebex_events_received_at ON tebex_events(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_minecraft_rank ON minecraft_accounts(minecraft_rank);

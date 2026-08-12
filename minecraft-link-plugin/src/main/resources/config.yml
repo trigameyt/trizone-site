@@ -1,7 +1,7 @@
-# URL publique de ton site Trizone
 api-url: "https://trizone.club/api/minecraft/link/confirm"
+sync-url: "https://trizone.club/api/minecraft/profile-sync"
 
-# DOIT être exactement identique à MINECRAFT_LINK_SECRET du site.
+# DOIT être exactement identique à MINECRAFT_LINK_SECRET dans Render.
 secret: "CHANGE_ME"
 
 timeout-seconds: 8

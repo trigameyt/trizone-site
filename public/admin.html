@@ -1,13 +1,26 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Administration — Trizone</title>
-  <link rel="stylesheet" href="/style.css"><script defer src="/components.js"></script><script defer src="/common.js"></script><script defer src="/admin.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Administration — Trizone</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/components.js"></script>
+  <script defer src="/common.js"></script>
+  <script defer src="/admin.js"></script>
 </head>
 <body>
   <div id="site-header"></div>
-  <main><section class="page-hero"><div class="container"><div class="page-title"><div><div class="kicker">Contrôle</div><h1>Panel <span class="accent">Admin</span></h1></div><p>Le rôle admin est accordé uniquement aux Discord IDs présents dans <code>ADMIN_DISCORD_IDS</code> sur le serveur.</p></div></div></section>
-  <section class="section" style="padding-top:20px"><div class="container"><div id="admin-root"><div class="skeleton"></div></div></div></section></main>
+  <main>
+    <section class="page-head">
+      <div class="container">
+        <p class="eyebrow">Administration</p>
+        <h1>Panel admin</h1>
+        <p>Contenu du site, joueurs liés, grades et événements Tebex.</p>
+      </div>
+    </section>
+    <section class="section compact"><div class="container"><div id="admin-root"><div class="skeleton"></div></div></div></section>
+  </main>
   <div id="site-footer"></div>
 </body>
 </html>

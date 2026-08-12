@@ -3,65 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Trizone, serveur Minecraft communautaire.">
+  <meta name="description" content="Trizone, serveur Minecraft Java et Bedrock : survie, PvP, duels et événements.">
   <title>Trizone — Serveur Minecraft</title>
   <link rel="stylesheet" href="/style.css">
   <script defer src="/components.js"></script>
   <script defer src="/common.js"></script>
-  <script defer>document.addEventListener('DOMContentLoaded',()=>{trizoneHeader('home');trizoneFooter();Trizone.boot();});</script>
+  <script defer src="/home.js"></script>
 </head>
 <body>
   <div id="site-header"></div>
   <main>
     <section class="hero">
-      <div class="container">
-        <div class="hero-art">
-          <img src="/assets/trizone-banner.png" alt="Univers violet Trizone">
-          <div class="hero-content">
-            <div class="kicker">✦ Communauté Minecraft</div>
-            <h1>Entre dans la <span class="accent">Zone</span></h1>
-            <p>Une identité sombre, minérale et violette. Rejoins Trizone, lie ton compte Minecraft, découvre les nouveautés et retrouve la boutique officielle.</p>
-            <div class="hero-actions">
-              <a class="btn btn-primary" href="/shop.html">Voir la boutique</a>
-              <a class="btn btn-ghost" href="/account.html">Mon compte</a>
-            </div>
-            <div class="server-copy">
-              <span class="pulse"></span>
-              <code>play.trizone.club</code>
-              <button class="btn btn-small btn-ghost" data-copy="play.trizone.club">Copier</button>
-            </div>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Serveur Minecraft Java & Bedrock</p>
+          <h1 data-site-text="home_title">TRIZONE</h1>
+          <p class="hero-description" data-site-text="home_description">Trizone est un réseau Minecraft Java & Bedrock centré sur la survie et le PvP : progression par grades, warzone, duels, événements et systèmes communautaires.</p>
+          <p class="server-tagline" data-site-text="server_tagline">Survie • PvP • Duels • Événements • Java & Bedrock</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" type="button" data-copy="play.trizone.club" data-server-address>Copier l’adresse du serveur</button>
+            <a class="btn btn-quiet" href="/shop.html">Boutique</a>
+          </div>
+          <div class="server-address">
+            <span class="status-dot" aria-hidden="true"></span>
+            <code data-site-text="server_address" data-server-address>play.trizone.club</code>
           </div>
         </div>
-        <div class="announcement" data-announcement></div>
+        <div class="hero-media">
+          <img src="/assets/trizone-banner.png" alt="Univers visuel Trizone">
+        </div>
       </div>
+      <div class="container"><div class="announcement" data-announcement hidden></div></div>
     </section>
 
     <section class="section">
       <div class="container">
-        <div class="section-head">
-          <div><h2>Un seul compte</h2><p>Discord, Minecraft et achats reliés proprement.</p></div>
+        <div class="section-title">
+          <h2>Ce qu’on trouve sur Trizone</h2>
+          <p>Pas de grand discours : voilà les principales parties du serveur.</p>
         </div>
-        <div class="grid-3">
-          <article class="card"><div class="icon-box">◈</div><h3>Connexion Discord</h3><p>Pas de mot de passe Trizone à retenir : le site s’appuie sur Discord OAuth2 pour identifier les joueurs.</p></article>
-          <article class="card"><div class="icon-box">⌁</div><h3>Liaison Minecraft</h3><p>Génère un code sur ton compte puis exécute <strong>/link</strong> en jeu pour associer ton UUID au bon profil.</p></article>
-          <article class="card"><div class="icon-box">✦</div><h3>Boutique Tebex</h3><p>Les produits viennent de Tebex. Le paiement reste géré par Tebex et les commandes sont livrées par le plugin officiel.</p></article>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-number">01</span>
+            <h3 data-site-text="feature_1_title">Survie & progression</h3>
+            <p data-site-text="feature_1_text">Développe ton stuff, progresse dans les grades et profite des systèmes d’économie et de progression du serveur.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">02</span>
+            <h3 data-site-text="feature_2_title">PvP & duels</h3>
+            <p data-site-text="feature_2_text">Warzone, entraînement PvP et duels pour se battre, tester ses kits et progresser face aux autres joueurs.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">03</span>
+            <h3 data-site-text="feature_3_title">Java & Bedrock</h3>
+            <p data-site-text="feature_3_text">Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <section class="section">
-      <div class="container grid-2">
-        <div class="card">
-          <div class="kicker">Serveur</div>
-          <h2 style="font:700 2.6rem Rajdhani,sans-serif;margin:14px 0 8px">PLAY.TRIZONE.CLUB</h2>
-          <p>Ajoute l’adresse directement dans ta liste de serveurs Minecraft Java.</p>
-          <div style="margin-top:18px"><button class="btn btn-primary" data-copy="play.trizone.club">Copier l’IP</button></div>
+    <section class="section section-dark">
+      <div class="container split">
+        <div>
+          <p class="eyebrow">Compte Trizone</p>
+          <h2>Discord et Minecraft au même endroit.</h2>
+          <p class="lead">Connecte ton Discord, lie ton pseudo Minecraft avec <code>/link</code>, puis retrouve ton grade et ton historique de boutique depuis ton profil.</p>
         </div>
-        <div class="card">
-          <div class="kicker">Compte</div>
-          <h2 style="font:700 2.6rem Rajdhani,sans-serif;margin:14px 0 8px">PROFIL TRIZONE</h2>
-          <p>Connecte-toi avec Discord pour lier ton pseudo Minecraft et retrouver tes achats reçus via Tebex.</p>
-          <div style="margin-top:18px"><a class="btn btn-primary" href="/account.html">Ouvrir mon compte</a></div>
+        <div class="split-actions">
+          <a class="btn btn-primary" href="/auth/discord" data-auth="guest" hidden>Se connecter avec Discord</a>
+          <a class="btn btn-primary" href="/account.html" data-auth="user" hidden>Ouvrir mon profil</a>
+          <a class="btn btn-quiet" href="#" data-site-href="discord_invite_url" hidden>Rejoindre le Discord</a>
         </div>
       </div>
     </section>

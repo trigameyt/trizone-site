@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Site officiel Trizone avec Discord OAuth, liaison Minecraft, admin et intégration Tebex Headless API.",
+  "description": "Site officiel Trizone v2 : Discord OAuth, liaison Minecraft, grades, panel admin éditable et boutique Tebex.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {
