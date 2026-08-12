@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin.html
+Disallow: /api/
+
+Sitemap: https://trizone.club/sitemap.xml
