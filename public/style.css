@@ -351,6 +351,13 @@ td small { color: var(--muted); margin-top: 3px; }
   white-space: nowrap;
 }
 
+
+.status-summary-percent {
+    font-size: .78rem;
+    font-weight: 900;
+    letter-spacing: .01em;
+    color: currentColor;
+}
 .status-summary-dot {
   width: 8px;
   height: 8px;

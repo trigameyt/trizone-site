@@ -44,3 +44,10 @@ Upload tous les fichiers sur ton dépôt `trizone-site`, puis commit par exemple
 ```text
 Show Minecraft server uptime status
 ```
+
+
+## Ajustements v2.6
+
+- Le badge récapitulatif en haut affiche maintenant le pourcentage moyen de disponibilité des serveurs configurés.
+- Le proxy est considéré **En ligne** lorsque Pterodactyl le signale `starting`, car certains proxys Velocity restent dans cet état malgré leur fonctionnement normal.
+- Les autres serveurs conservent le comportement normal : `starting` = Démarrage.

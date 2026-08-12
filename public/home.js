@@ -29,8 +29,18 @@ function renderStatusBoard(data) {
 
   const hasDown = services.some((service) => service.state === 'down');
   const hasWarn = services.some((service) => service.state === 'warn');
+  const configuredServices = services.filter((service) => service.configured !== false);
+  const globalPercent = configuredServices.length
+    ? configuredServices.reduce((sum, service) => sum + Math.max(0, Math.min(100, Number(service.uptime_percent || 0))), 0) / configuredServices.length
+    : 0;
+
   summary.className = `status-summary ${hasDown ? 'is-offline' : hasWarn ? 'is-warn' : 'is-online'}`;
-  summary.innerHTML = `<span class="status-summary-dot"></span><span>${hasDown ? 'Un serveur est hors ligne' : hasWarn ? 'Un serveur démarre ou reste à configurer' : 'Tous les serveurs sont en ligne'}</span>`;
+  const summaryText = hasDown
+    ? 'Un serveur est hors ligne'
+    : hasWarn
+      ? 'Un serveur démarre ou reste à configurer'
+      : 'Tous les serveurs sont en ligne';
+  summary.innerHTML = `<span class="status-summary-dot"></span><strong class="status-summary-percent">${globalPercent.toFixed(2)}%</strong><span>${summaryText}</span>`;
 
   root.innerHTML = services.map((service) => {
     const percent = Math.max(0, Math.min(100, Number(service.uptime_percent || 0)));

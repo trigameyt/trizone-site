@@ -165,14 +165,17 @@ async function readPterodactylStatus(serverId, label = 'Serveur') {
   return data;
 }
 
-function stateFromPterodactyl(status) {
+function stateFromPterodactyl(status, options = {}) {
   if (!status?.configured) return { state: 'warn', label: 'À configurer' };
   if (!status?.available || status?.suspended) {
     return { state: 'down', label: status?.suspended ? 'Suspendu' : 'Hors ligne' };
   }
   const current = String(status.state || '').toLowerCase();
   if (current === 'running') return { state: 'up', label: 'En ligne' };
-  if (current === 'starting') return { state: 'warn', label: 'Démarrage' };
+  if (current === 'starting') {
+    if (options.treatStartingAsOnline) return { state: 'up', label: 'En ligne' };
+    return { state: 'warn', label: 'Démarrage' };
+  }
   if (current === 'stopping') return { state: 'warn', label: 'Arrêt en cours' };
   return { state: 'down', label: 'Hors ligne' };
 }
@@ -303,7 +306,7 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.4.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.6.0' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
@@ -333,7 +336,7 @@ app.get('/api/status-board', async (_req, res) => {
 
     try {
       const ptero = await readPterodactylStatus(server.serverId, server.label);
-      const mapped = stateFromPterodactyl(ptero);
+      const mapped = stateFromPterodactyl(ptero, { treatStartingAsOnline: server.id === 'proxy' });
       state = mapped.state;
       stateLabel = mapped.label;
 
@@ -356,6 +359,7 @@ app.get('/api/status-board', async (_req, res) => {
       state,
       state_label: stateLabel,
       uptime_percent: uptimePercent(history),
+      configured: Boolean(server.serverId),
       history,
       meta,
     });
