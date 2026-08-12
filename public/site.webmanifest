@@ -1,0 +1,10 @@
+{
+  "name": "Trizone",
+  "short_name": "Trizone",
+  "icons": [
+    {"src": "/assets/favicon.png", "sizes": "512x512", "type": "image/png"}
+  ],
+  "theme_color": "#0b0710",
+  "background_color": "#0b0710",
+  "display": "standalone"
+}
