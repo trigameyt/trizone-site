@@ -31,3 +31,11 @@ services:
         sync: false
       - key: MINECRAFT_LINK_SECRET
         sync: false
+      - key: PTERODACTYL_PANEL_URL
+        sync: false
+      - key: PTERODACTYL_API_KEY
+        sync: false
+      - key: PTERODACTYL_SERVER_ID
+        sync: false
+      - key: PTERODACTYL_SERVER_LABEL
+        value: "Proxy"

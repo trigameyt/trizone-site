@@ -11,6 +11,7 @@ function trizoneHeader(active = '') {
         <button class="menu-button" type="button" data-mobile-toggle aria-label="Ouvrir le menu" aria-expanded="false">Menu</button>
         <nav class="nav-links" aria-label="Navigation principale">
           <a class="${active === 'home' ? 'active' : ''}" href="/">Accueil</a>
+          <a href="/#status">État</a>
           <a class="${active === 'shop' ? 'active' : ''}" href="/shop.html">Boutique</a>
           <a class="${active === 'account' ? 'active' : ''}" href="/account.html">Compte</a>
           <a class="${active === 'admin' ? 'active' : ''}" href="/admin.html" data-auth="admin" hidden>Admin</a>

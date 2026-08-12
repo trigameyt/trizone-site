@@ -15,6 +15,8 @@ const siteFields = [
   ['feature_3_title', 'Bloc 3 — titre', 'text', ''],
   ['feature_3_text', 'Bloc 3 — texte', 'textarea', ''],
   ['discord_invite_url', 'Lien Discord', 'text', 'Laisse vide pour masquer le bouton Discord.'],
+  ['status_title', 'Section état — titre', 'text', 'Ex. État du réseau'],
+  ['status_description', 'Section état — description', 'text', 'Texte affiché au-dessus de l’uptime.'],
 ];
 
 const legalFields = [

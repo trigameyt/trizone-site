@@ -42,6 +42,35 @@
       <div class="container"><div class="announcement" data-announcement hidden></div></div>
     </section>
 
+    <section class="section section-status" id="status">
+      <div class="container">
+        <div class="status-section-heading">
+          <div>
+            <p class="eyebrow">Infrastructure Trizone</p>
+            <h2 data-site-text="status_title">État des services</h2>
+            <p data-site-text="status_description">Disponibilité des services Trizone sur les 20 dernières minutes.</p>
+          </div>
+          <div id="status-summary" class="status-summary is-loading">
+            <span class="status-summary-dot"></span>
+            <span>Vérification…</span>
+          </div>
+        </div>
+
+        <div class="uptime-panel" aria-live="polite">
+          <div class="uptime-panel-head">
+            <div>
+              <strong>Services</strong>
+              <span>Les barres les plus récentes sont à droite.</span>
+            </div>
+            <span class="uptime-window">20 min</span>
+          </div>
+          <div id="status-board" class="uptime-list">
+            <div class="uptime-loading">Chargement de l’état des services…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section">
       <div class="container">
         <div class="section-title">

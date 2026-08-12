@@ -28,12 +28,90 @@ const SITE_SETTINGS = {
   feature_3_title: { max: 80, fallback: 'Java & Bedrock' },
   feature_3_text: { max: 350, fallback: 'Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.' },
   discord_invite_url: { max: 300, fallback: '' },
+  status_title: { max: 80, fallback: 'État des services' },
+  status_description: { max: 220, fallback: 'Disponibilité des services Trizone sur les 20 dernières minutes.' },
   legal_operator_name: { max: 160, fallback: '' },
   legal_contact_address: { max: 350, fallback: '' },
   legal_contact_email: { max: 180, fallback: '' },
   privacy_contact_email: { max: 180, fallback: '' },
   legal_extra_terms: { max: 2500, fallback: '' },
 };
+
+let pterodactylCache = { at: 0, data: null };
+
+// Historique léger en mémoire pour le panneau de statut.
+// 60 points x 20 secondes = 20 minutes. L’historique repart à zéro à chaque redéploiement Render.
+const STATUS_HISTORY_SIZE = 60;
+const statusHistory = new Map();
+
+function pushStatusSample(id, state) {
+  const safeState = ['up', 'warn', 'down'].includes(state) ? state : 'down';
+  let history = statusHistory.get(id);
+  if (!history) history = Array(STATUS_HISTORY_SIZE - 1).fill(safeState);
+  history.push(safeState);
+  if (history.length > STATUS_HISTORY_SIZE) history = history.slice(-STATUS_HISTORY_SIZE);
+  statusHistory.set(id, history);
+  return history;
+}
+
+function uptimePercent(history) {
+  if (!Array.isArray(history) || history.length === 0) return 0;
+  const available = history.filter((state) => state === 'up' || state === 'warn').length;
+  return Math.round((available / history.length) * 10000) / 100;
+}
+
+
+function pterodactylConfig() {
+  return {
+    panelUrl: String(process.env.PTERODACTYL_PANEL_URL || '').trim().replace(/\/$/, ''),
+    apiKey: String(process.env.PTERODACTYL_API_KEY || '').trim(),
+    serverId: String(process.env.PTERODACTYL_SERVER_ID || '').trim(),
+    label: String(process.env.PTERODACTYL_SERVER_LABEL || 'Proxy').trim().slice(0, 60) || 'Proxy',
+  };
+}
+
+async function readPterodactylStatus() {
+  const cfg = pterodactylConfig();
+  if (!cfg.panelUrl || !cfg.apiKey || !cfg.serverId) return { configured: false };
+
+  const now = Date.now();
+  if (pterodactylCache.data && now - pterodactylCache.at < 10_000) return pterodactylCache.data;
+
+  const headers = {
+    Authorization: `Bearer ${cfg.apiKey}`,
+    Accept: 'Application/vnd.pterodactyl.v1+json',
+  };
+  const id = encodeURIComponent(cfg.serverId);
+  const [resourceResponse, serverResponse] = await Promise.all([
+    fetch(`${cfg.panelUrl}/api/client/servers/${id}/resources`, { headers, signal: AbortSignal.timeout(6500) }),
+    fetch(`${cfg.panelUrl}/api/client/servers/${id}`, { headers, signal: AbortSignal.timeout(6500) }),
+  ]);
+
+  if (!resourceResponse.ok) throw new Error(`Pterodactyl resources HTTP ${resourceResponse.status}`);
+  const json = await resourceResponse.json();
+  const serverJson = serverResponse.ok ? await serverResponse.json() : {};
+  const attr = json?.attributes || {};
+  const serverAttr = serverJson?.attributes || {};
+  const resources = attr.resources || {};
+  const memoryLimitMb = Number(serverAttr?.limits?.memory || 0);
+  const data = {
+    configured: true,
+    available: true,
+    label: cfg.label,
+    state: String(attr.current_state || 'unknown'),
+    suspended: Boolean(attr.is_suspended),
+    uptime_ms: Number(resources.uptime || 0),
+    cpu_percent: Number(resources.cpu_absolute || 0),
+    memory_bytes: Number(resources.memory_bytes || 0),
+    memory_limit_bytes: memoryLimitMb > 0 ? memoryLimitMb * 1024 * 1024 : 0,
+    disk_bytes: Number(resources.disk_bytes || 0),
+    network_rx_bytes: Number(resources.network_rx_bytes || 0),
+    network_tx_bytes: Number(resources.network_tx_bytes || 0),
+    updated_at: new Date().toISOString(),
+  };
+  pterodactylCache = { at: now, data };
+  return data;
+}
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -161,7 +239,115 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.0.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.3.0' }));
+
+app.get('/api/server-status', async (_req, res) => {
+  let config = {};
+  try { config = await getSiteConfig(); } catch {}
+  const address = config.server_address || 'play.trizone.club';
+  try {
+    const status = await readPterodactylStatus();
+    if (!status.configured) {
+      return res.json({ configured: false, available: false, label: pterodactylConfig().label, address });
+    }
+    return res.json({ ...status, address });
+  } catch (error) {
+    console.warn('[server-status]', error.message);
+    return res.json({ configured: true, available: false, label: pterodactylConfig().label, address, updated_at: new Date().toISOString() });
+  }
+});
+
+app.get('/api/status-board', async (_req, res) => {
+  const now = new Date().toISOString();
+  let settings = {};
+  try { settings = await getSiteConfig(); } catch {}
+  const services = [];
+
+  const siteHistory = pushStatusSample('site', 'up');
+  services.push({
+    id: 'site',
+    name: 'Site web',
+    description: 'Accueil, profils et pages publiques de Trizone.',
+    state: 'up',
+    state_label: 'En ligne',
+    uptime_percent: uptimePercent(siteHistory),
+    history: siteHistory,
+    meta: BASE_URL.replace(/^https?:\/\//, ''),
+  });
+
+  let dbState = 'up';
+  try {
+    await query('SELECT 1');
+  } catch (error) {
+    dbState = 'down';
+    console.warn('[status-board] database:', error.message);
+  }
+  const dbHistory = pushStatusSample('account-api', dbState);
+  services.push({
+    id: 'account-api',
+    name: 'Compte & API',
+    description: 'Connexion Discord, liaison Minecraft et espace joueur.',
+    state: dbState,
+    state_label: dbState === 'up' ? 'En ligne' : 'Indisponible',
+    uptime_percent: uptimePercent(dbHistory),
+    history: dbHistory,
+    meta: 'Supabase',
+  });
+
+  let proxyState = 'warn';
+  let proxyLabel = 'Suivi à configurer';
+  let proxyMeta = settings.server_address || 'play.trizone.club';
+  try {
+    const ptero = await readPterodactylStatus();
+    if (!ptero.configured) {
+      proxyState = 'warn';
+      proxyLabel = 'Suivi à configurer';
+    } else if (!ptero.available || ptero.suspended) {
+      proxyState = 'down';
+      proxyLabel = ptero.suspended ? 'Suspendu' : 'Hors ligne';
+    } else {
+      const state = String(ptero.state || '').toLowerCase();
+      if (state === 'running') { proxyState = 'up'; proxyLabel = 'En ligne'; }
+      else if (state === 'starting') { proxyState = 'warn'; proxyLabel = 'Démarrage'; }
+      else if (state === 'stopping') { proxyState = 'warn'; proxyLabel = 'Arrêt en cours'; }
+      else { proxyState = 'down'; proxyLabel = 'Hors ligne'; }
+      if (Number.isFinite(ptero.cpu_percent)) {
+        proxyMeta = `${proxyMeta} · CPU ${Number(ptero.cpu_percent).toFixed(1)} %`;
+      }
+    }
+  } catch (error) {
+    proxyState = 'down';
+    proxyLabel = 'Indisponible';
+    console.warn('[status-board] pterodactyl:', error.message);
+  }
+  const proxyHistory = pushStatusSample('proxy', proxyState);
+  services.push({
+    id: 'proxy',
+    name: 'Réseau Minecraft',
+    description: 'Proxy Velocity et accès Java / Bedrock.',
+    state: proxyState,
+    state_label: proxyLabel,
+    uptime_percent: uptimePercent(proxyHistory),
+    history: proxyHistory,
+    meta: proxyMeta,
+  });
+
+  const tebexConfigured = Boolean(String(process.env.TEBEX_WEBSTORE_TOKEN || '').trim());
+  const shopState = tebexConfigured ? 'up' : 'warn';
+  const shopHistory = pushStatusSample('shop', shopState);
+  services.push({
+    id: 'shop',
+    name: 'Boutique',
+    description: 'Catalogue et passage au paiement via Tebex.',
+    state: shopState,
+    state_label: tebexConfigured ? 'En ligne' : 'Configuration en cours',
+    uptime_percent: uptimePercent(shopHistory),
+    history: shopHistory,
+    meta: tebexConfigured ? 'Tebex' : 'Tebex non configuré',
+  });
+
+  res.json({ window_minutes: 20, updated_at: now, services });
+});
 
 app.get('/auth/discord', sensitiveLimiter, (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
@@ -627,7 +813,7 @@ app.use((req, res) => {
 });
 
 initDatabase()
-  .then(() => app.listen(PORT, () => console.log(`Trizone site v2 lancé sur ${BASE_URL} (port ${PORT})`)))
+  .then(() => app.listen(PORT, () => console.log(`Trizone site v2.2 lancé sur ${BASE_URL} (port ${PORT})`)))
   .catch((error) => {
     console.error('Impossible d’initialiser la base de données:', error);
     process.exit(1);
