@@ -28,8 +28,8 @@ const SITE_SETTINGS = {
   feature_3_title: { max: 80, fallback: 'Java & Bedrock' },
   feature_3_text: { max: 350, fallback: 'Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.' },
   discord_invite_url: { max: 300, fallback: '' },
-  status_title: { max: 80, fallback: 'État des services' },
-  status_description: { max: 220, fallback: 'Disponibilité des services Trizone sur les 20 dernières minutes.' },
+  status_title: { max: 80, fallback: 'État des serveurs Minecraft' },
+  status_description: { max: 220, fallback: 'Disponibilité du proxy et des serveurs Trizone sur les 20 dernières minutes.' },
   legal_operator_name: { max: 160, fallback: '' },
   legal_contact_address: { max: 350, fallback: '' },
   legal_contact_email: { max: 180, fallback: '' },
@@ -37,9 +37,9 @@ const SITE_SETTINGS = {
   legal_extra_terms: { max: 2500, fallback: '' },
 };
 
-let pterodactylCache = { at: 0, data: null };
+const pterodactylCache = new Map();
 
-// Historique léger en mémoire pour le panneau de statut.
+// Historique léger en mémoire pour le panneau Minecraft.
 // 60 points x 20 secondes = 20 minutes. L’historique repart à zéro à chaque redéploiement Render.
 const STATUS_HISTORY_SIZE = 60;
 const statusHistory = new Map();
@@ -60,28 +60,80 @@ function uptimePercent(history) {
   return Math.round((available / history.length) * 10000) / 100;
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (!Number.isFinite(value) || value <= 0) return '0 MiB';
+  const mib = value / 1024 / 1024;
+  if (mib >= 1024) return `${(mib / 1024).toFixed(2)} GiB`;
+  return `${mib.toFixed(mib >= 100 ? 0 : 1)} MiB`;
+}
 
-function pterodactylConfig() {
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (days > 0) return `${days} j ${hours} h ${minutes} min`;
+  if (hours > 0) return `${hours} h ${minutes} min`;
+  return `${minutes} min`;
+}
+
+function pterodactylBaseConfig() {
   return {
     panelUrl: String(process.env.PTERODACTYL_PANEL_URL || '').trim().replace(/\/$/, ''),
     apiKey: String(process.env.PTERODACTYL_API_KEY || '').trim(),
-    serverId: String(process.env.PTERODACTYL_SERVER_ID || '').trim(),
-    label: String(process.env.PTERODACTYL_SERVER_LABEL || 'Proxy').trim().slice(0, 60) || 'Proxy',
   };
 }
 
-async function readPterodactylStatus() {
-  const cfg = pterodactylConfig();
-  if (!cfg.panelUrl || !cfg.apiKey || !cfg.serverId) return { configured: false };
+function minecraftServerConfigs() {
+  return [
+    {
+      id: 'proxy',
+      label: 'Proxy',
+      serverId: String(process.env.PTERODACTYL_PROXY_ID || process.env.PTERODACTYL_SERVER_ID || '').trim(),
+      description: 'Point d’entrée Velocity du réseau Trizone.',
+    },
+    {
+      id: 'warzone',
+      label: 'Warzone',
+      serverId: String(process.env.PTERODACTYL_WARZONE_ID || '').trim(),
+      description: 'Serveur PvP / Warzone.',
+    },
+    {
+      id: 'spawn',
+      label: 'Spawn',
+      serverId: String(process.env.PTERODACTYL_SPAWN_ID || '').trim(),
+      description: 'Lobby et spawn principal.',
+    },
+    {
+      id: 'minigame',
+      label: 'Minigame',
+      serverId: String(process.env.PTERODACTYL_MINIGAME_ID || '').trim(),
+      description: 'Serveur de mini-jeux.',
+    },
+    {
+      id: 'auth',
+      label: 'Auth',
+      serverId: String(process.env.PTERODACTYL_AUTH_ID || '').trim(),
+      description: 'Serveur d’authentification.',
+    },
+  ];
+}
 
+async function readPterodactylStatus(serverId, label = 'Serveur') {
+  const cfg = pterodactylBaseConfig();
+  if (!cfg.panelUrl || !cfg.apiKey || !serverId) return { configured: false, label };
+
+  const cacheKey = String(serverId);
   const now = Date.now();
-  if (pterodactylCache.data && now - pterodactylCache.at < 10_000) return pterodactylCache.data;
+  const cached = pterodactylCache.get(cacheKey);
+  if (cached && now - cached.at < 10_000) return cached.data;
 
   const headers = {
     Authorization: `Bearer ${cfg.apiKey}`,
     Accept: 'Application/vnd.pterodactyl.v1+json',
   };
-  const id = encodeURIComponent(cfg.serverId);
+  const id = encodeURIComponent(serverId);
   const [resourceResponse, serverResponse] = await Promise.all([
     fetch(`${cfg.panelUrl}/api/client/servers/${id}/resources`, { headers, signal: AbortSignal.timeout(6500) }),
     fetch(`${cfg.panelUrl}/api/client/servers/${id}`, { headers, signal: AbortSignal.timeout(6500) }),
@@ -97,7 +149,7 @@ async function readPterodactylStatus() {
   const data = {
     configured: true,
     available: true,
-    label: cfg.label,
+    label,
     state: String(attr.current_state || 'unknown'),
     suspended: Boolean(attr.is_suspended),
     uptime_ms: Number(resources.uptime || 0),
@@ -109,8 +161,20 @@ async function readPterodactylStatus() {
     network_tx_bytes: Number(resources.network_tx_bytes || 0),
     updated_at: new Date().toISOString(),
   };
-  pterodactylCache = { at: now, data };
+  pterodactylCache.set(cacheKey, { at: now, data });
   return data;
+}
+
+function stateFromPterodactyl(status) {
+  if (!status?.configured) return { state: 'warn', label: 'À configurer' };
+  if (!status?.available || status?.suspended) {
+    return { state: 'down', label: status?.suspended ? 'Suspendu' : 'Hors ligne' };
+  }
+  const current = String(status.state || '').toLowerCase();
+  if (current === 'running') return { state: 'up', label: 'En ligne' };
+  if (current === 'starting') return { state: 'warn', label: 'Démarrage' };
+  if (current === 'stopping') return { state: 'warn', label: 'Arrêt en cours' };
+  return { state: 'down', label: 'Hors ligne' };
 }
 
 app.set('trust proxy', 1);
@@ -239,112 +303,63 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.3.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.4.0' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
   try { config = await getSiteConfig(); } catch {}
   const address = config.server_address || 'play.trizone.club';
+  const proxy = minecraftServerConfigs()[0];
   try {
-    const status = await readPterodactylStatus();
+    const status = await readPterodactylStatus(proxy.serverId, proxy.label);
     if (!status.configured) {
-      return res.json({ configured: false, available: false, label: pterodactylConfig().label, address });
+      return res.json({ configured: false, available: false, label: proxy.label, address });
     }
     return res.json({ ...status, address });
   } catch (error) {
     console.warn('[server-status]', error.message);
-    return res.json({ configured: true, available: false, label: pterodactylConfig().label, address, updated_at: new Date().toISOString() });
+    return res.json({ configured: true, available: false, label: proxy.label, address, updated_at: new Date().toISOString() });
   }
 });
 
 app.get('/api/status-board', async (_req, res) => {
   const now = new Date().toISOString();
-  let settings = {};
-  try { settings = await getSiteConfig(); } catch {}
   const services = [];
 
-  const siteHistory = pushStatusSample('site', 'up');
-  services.push({
-    id: 'site',
-    name: 'Site web',
-    description: 'Accueil, profils et pages publiques de Trizone.',
-    state: 'up',
-    state_label: 'En ligne',
-    uptime_percent: uptimePercent(siteHistory),
-    history: siteHistory,
-    meta: BASE_URL.replace(/^https?:\/\//, ''),
-  });
+  for (const server of minecraftServerConfigs()) {
+    let state = 'warn';
+    let stateLabel = 'À configurer';
+    let meta = 'Ajoute son ID Pterodactyl dans Render';
 
-  let dbState = 'up';
-  try {
-    await query('SELECT 1');
-  } catch (error) {
-    dbState = 'down';
-    console.warn('[status-board] database:', error.message);
-  }
-  const dbHistory = pushStatusSample('account-api', dbState);
-  services.push({
-    id: 'account-api',
-    name: 'Compte & API',
-    description: 'Connexion Discord, liaison Minecraft et espace joueur.',
-    state: dbState,
-    state_label: dbState === 'up' ? 'En ligne' : 'Indisponible',
-    uptime_percent: uptimePercent(dbHistory),
-    history: dbHistory,
-    meta: 'Supabase',
-  });
+    try {
+      const ptero = await readPterodactylStatus(server.serverId, server.label);
+      const mapped = stateFromPterodactyl(ptero);
+      state = mapped.state;
+      stateLabel = mapped.label;
 
-  let proxyState = 'warn';
-  let proxyLabel = 'Suivi à configurer';
-  let proxyMeta = settings.server_address || 'play.trizone.club';
-  try {
-    const ptero = await readPterodactylStatus();
-    if (!ptero.configured) {
-      proxyState = 'warn';
-      proxyLabel = 'Suivi à configurer';
-    } else if (!ptero.available || ptero.suspended) {
-      proxyState = 'down';
-      proxyLabel = ptero.suspended ? 'Suspendu' : 'Hors ligne';
-    } else {
-      const state = String(ptero.state || '').toLowerCase();
-      if (state === 'running') { proxyState = 'up'; proxyLabel = 'En ligne'; }
-      else if (state === 'starting') { proxyState = 'warn'; proxyLabel = 'Démarrage'; }
-      else if (state === 'stopping') { proxyState = 'warn'; proxyLabel = 'Arrêt en cours'; }
-      else { proxyState = 'down'; proxyLabel = 'Hors ligne'; }
-      if (Number.isFinite(ptero.cpu_percent)) {
-        proxyMeta = `${proxyMeta} · CPU ${Number(ptero.cpu_percent).toFixed(1)} %`;
+      if (ptero.configured) {
+        const uptime = formatDuration(ptero.uptime_ms);
+        meta = `Uptime ${uptime}`;
       }
+    } catch (error) {
+      state = 'down';
+      stateLabel = 'Indisponible';
+      meta = 'Impossible de joindre Pterodactyl';
+      console.warn(`[status-board] ${server.id}:`, error.message);
     }
-  } catch (error) {
-    proxyState = 'down';
-    proxyLabel = 'Indisponible';
-    console.warn('[status-board] pterodactyl:', error.message);
-  }
-  const proxyHistory = pushStatusSample('proxy', proxyState);
-  services.push({
-    id: 'proxy',
-    name: 'Réseau Minecraft',
-    description: 'Proxy Velocity et accès Java / Bedrock.',
-    state: proxyState,
-    state_label: proxyLabel,
-    uptime_percent: uptimePercent(proxyHistory),
-    history: proxyHistory,
-    meta: proxyMeta,
-  });
 
-  const tebexConfigured = Boolean(String(process.env.TEBEX_WEBSTORE_TOKEN || '').trim());
-  const shopState = tebexConfigured ? 'up' : 'warn';
-  const shopHistory = pushStatusSample('shop', shopState);
-  services.push({
-    id: 'shop',
-    name: 'Boutique',
-    description: 'Catalogue et passage au paiement via Tebex.',
-    state: shopState,
-    state_label: tebexConfigured ? 'En ligne' : 'Configuration en cours',
-    uptime_percent: uptimePercent(shopHistory),
-    history: shopHistory,
-    meta: tebexConfigured ? 'Tebex' : 'Tebex non configuré',
-  });
+    const history = pushStatusSample(`mc-${server.id}`, state);
+    services.push({
+      id: server.id,
+      name: server.label,
+      description: server.description,
+      state,
+      state_label: stateLabel,
+      uptime_percent: uptimePercent(history),
+      history,
+      meta,
+    });
+  }
 
   res.json({ window_minutes: 20, updated_at: now, services });
 });

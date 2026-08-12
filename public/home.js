@@ -30,7 +30,7 @@ function renderStatusBoard(data) {
   const hasDown = services.some((service) => service.state === 'down');
   const hasWarn = services.some((service) => service.state === 'warn');
   summary.className = `status-summary ${hasDown ? 'is-offline' : hasWarn ? 'is-warn' : 'is-online'}`;
-  summary.innerHTML = `<span class="status-summary-dot"></span><span>${hasDown ? 'Incident détecté' : hasWarn ? 'Services partiellement disponibles' : 'Tous les services fonctionnent'}</span>`;
+  summary.innerHTML = `<span class="status-summary-dot"></span><span>${hasDown ? 'Un serveur est hors ligne' : hasWarn ? 'Un serveur démarre ou reste à configurer' : 'Tous les serveurs sont en ligne'}</span>`;
 
   root.innerHTML = services.map((service) => {
     const percent = Math.max(0, Math.min(100, Number(service.uptime_percent || 0)));

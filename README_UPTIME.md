@@ -1,58 +1,46 @@
-# Section État des services — Trizone v2.3
+# État des serveurs Minecraft — Trizone v2.4
 
-La page d’accueil contient maintenant un panneau de statut inspiré des pages d’uptime modernes, mais avec la DA sombre et violette de Trizone.
+La section d’uptime de la page d’accueil affiche maintenant **uniquement les serveurs Minecraft** :
 
-## Services affichés
+- Proxy
+- Warzone
+- Spawn
+- Minigame
+- Auth
 
-- **Site web** : si l’API du site répond, le service est marqué en ligne.
-- **Compte & API** : vérifie réellement la connexion PostgreSQL / Supabase avec `SELECT 1`.
-- **Réseau Minecraft** : récupère l’état réel du proxy via l’API Client Pterodactyl.
-- **Boutique** : indique si l’intégration Tebex est configurée.
+Chaque ligne affiche l’état actuel, un pourcentage de disponibilité, 60 barres d’historique (~20 minutes), le CPU, la RAM et l’uptime du serveur.
 
-Chaque ligne affiche :
+## Variables Render
 
-- un pourcentage de disponibilité ;
-- l’état actuel ;
-- 60 petites barres d’historique ;
-- une fenêtre de 20 minutes ;
-- les informations utiles du service.
-
-## Comment fonctionne l’historique
-
-Le navigateur demande `/api/status-board` toutes les **20 secondes**.
-Le backend conserve **60 points** en mémoire, soit environ **20 minutes** d’historique.
-
-Important : cet historique est volontairement léger et repart à zéro à chaque redéploiement / redémarrage de Render. Il ne s’agit pas encore d’un historique longue durée stocké en base de données.
-
-## Pterodactyl
-
-Pour que la ligne **Réseau Minecraft** utilise les vraies données du proxy, garde ces variables dans Render :
+Ajoute dans `Render > Environment` :
 
 ```text
 PTERODACTYL_PANEL_URL=https://URL-DE-TON-PANEL
 PTERODACTYL_API_KEY=TA_CLE_API_CLIENT
-PTERODACTYL_SERVER_ID=0a96df42
-PTERODACTYL_SERVER_LABEL=Proxy
+
+PTERODACTYL_PROXY_ID=0a96df42
+PTERODACTYL_WARZONE_ID=ID_DU_SERVEUR_WARZONE
+PTERODACTYL_SPAWN_ID=ID_DU_SERVEUR_SPAWN
+PTERODACTYL_MINIGAME_ID=ID_DU_SERVEUR_MINIGAME
+PTERODACTYL_AUTH_ID=ID_DU_SERVEUR_AUTH
 ```
+
+Le proxy accepte aussi l’ancienne variable `PTERODACTYL_SERVER_ID`, donc si elle existe déjà tu peux la garder pendant la transition.
 
 La clé Pterodactyl reste uniquement côté backend et n’est jamais envoyée au navigateur.
 
-## Tebex
+## Où trouver les IDs ?
 
-La ligne Boutique utilise simplement la présence de :
+Dans ton panel Pterodactyl, ouvre chaque serveur. L’identifiant court est celui utilisé par le panel/API pour identifier le serveur. Tu avais déjà `0a96df42` pour le proxy.
 
-```text
-TEBEX_WEBSTORE_TOKEN
-```
+## Historique
 
-Si cette variable n’est pas encore configurée, la boutique apparaît en **Configuration en cours** au lieu d’être marquée hors ligne.
+Le navigateur recharge `/api/status-board` toutes les 20 secondes. Le backend conserve 60 points en mémoire, soit environ 20 minutes. L’historique repart à zéro après un redéploiement ou redémarrage Render.
 
-## Déploiement
+## Commit
 
-Upload tous les fichiers de cette version sur le dépôt GitHub `trizone-site`, puis commit par exemple avec :
+Upload tous les fichiers sur ton dépôt `trizone-site`, puis commit par exemple :
 
 ```text
-Redesign uptime section with Trizone style
+Show Minecraft server uptime status
 ```
-
-Render redéploiera automatiquement le site.
