@@ -18,8 +18,6 @@ CREATE TABLE IF NOT EXISTS minecraft_accounts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE minecraft_accounts ADD COLUMN IF NOT EXISTS minecraft_rank TEXT NOT NULL DEFAULT 'default';
-
 CREATE TABLE IF NOT EXISTS link_codes (
     code TEXT PRIMARY KEY,
     discord_id TEXT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
@@ -27,12 +25,48 @@ CREATE TABLE IF NOT EXISTS link_codes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS tebex_events (
-    webhook_id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS stripe_events (
+    event_id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
-    event_date TIMESTAMPTZ,
-    subject JSONB NOT NULL DEFAULT '{}'::jsonb,
+    event_created_at TIMESTAMPTZ,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    processed BOOLEAN NOT NULL DEFAULT FALSE,
+    process_error TEXT,
+    processed_at TIMESTAMPTZ,
     received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stripe_orders (
+    checkout_session_id TEXT PRIMARY KEY,
+    event_id TEXT,
+    payment_intent_id TEXT,
+    discord_id TEXT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
+    minecraft_uuid TEXT,
+    minecraft_username TEXT,
+    rank_key TEXT NOT NULL,
+    price_id TEXT,
+    amount_total BIGINT,
+    currency TEXT,
+    payment_status TEXT NOT NULL DEFAULT 'unpaid',
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS minecraft_deliveries (
+    id BIGSERIAL PRIMARY KEY,
+    discord_id TEXT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
+    minecraft_uuid TEXT NOT NULL,
+    minecraft_username TEXT NOT NULL,
+    target_rank TEXT NOT NULL DEFAULT 'default',
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ,
+    delivered_at TIMESTAMPTZ,
+    last_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS site_settings (
@@ -41,6 +75,10 @@ CREATE TABLE IF NOT EXISTS site_settings (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_tebex_events_type ON tebex_events(type);
-CREATE INDEX IF NOT EXISTS idx_tebex_events_received_at ON tebex_events(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_events_type ON stripe_events(type);
+CREATE INDEX IF NOT EXISTS idx_stripe_events_received_at ON stripe_events(received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_orders_discord ON stripe_orders(discord_id, purchased_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stripe_orders_payment_intent ON stripe_orders(payment_intent_id);
+CREATE INDEX IF NOT EXISTS idx_stripe_orders_active_rank ON stripe_orders(discord_id, active, rank_key);
+CREATE INDEX IF NOT EXISTS idx_minecraft_delivery_pending ON minecraft_deliveries(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_minecraft_rank ON minecraft_accounts(minecraft_rank);

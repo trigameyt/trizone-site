@@ -2,12 +2,24 @@ function fmtDate(value) {
   return value ? new Intl.DateTimeFormat('fr-CH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 }
 
-function eventSummary(event) {
-  const s = event.subject || {};
-  const products = Array.isArray(s.products) ? s.products.map((p) => p.name).filter(Boolean).join(', ') : '';
-  const amount = s.price_paid?.amount ?? s.price?.amount;
-  const currency = s.price_paid?.currency ?? s.price?.currency ?? '';
-  return `${products || 'Achat Tebex'}${amount != null ? ` — ${amount} ${currency}` : ''}`;
+function purchaseSummary(order) {
+  const label = Trizone.rankLabel(order.rank_key || 'default');
+  const amount = Number(order.amount_total);
+  const currency = String(order.currency || 'CHF').toUpperCase();
+  let price = '';
+  if (Number.isFinite(amount)) {
+    try { price = new Intl.NumberFormat('fr-CH', { style: 'currency', currency }).format(amount / 100); }
+    catch { price = `${(amount / 100).toFixed(2)} ${currency}`; }
+  }
+  return `Grade ${label}${price ? ` — ${price}` : ''}`;
+}
+
+function purchaseStatus(order) {
+  if (order.active) return 'Payé / actif';
+  if (order.payment_status === 'refunded') return 'Remboursé';
+  if (order.payment_status === 'failed') return 'Échec du paiement';
+  if (order.payment_status === 'paid') return 'Payé';
+  return 'En attente';
 }
 
 async function generateLinkCode() {
@@ -40,13 +52,48 @@ async function loadPurchases() {
       root.innerHTML = '<p class="muted">Aucun achat associé à ce compte pour le moment.</p>';
       return;
     }
-    root.innerHTML = data.data.map((event) => `
+    root.innerHTML = data.data.map((order) => `
       <div class="list-row">
-        <div><strong>${Trizone.escapeHtml(eventSummary(event))}</strong><small>${Trizone.escapeHtml(event.type)}</small></div>
-        <span>${fmtDate(event.event_date || event.received_at)}</span>
+        <div><strong>${Trizone.escapeHtml(purchaseSummary(order))}</strong><small>${Trizone.escapeHtml(purchaseStatus(order))}</small></div>
+        <span>${fmtDate(order.purchased_at || order.updated_at)}</span>
       </div>`).join('');
   } catch (error) {
     root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`;
+  }
+}
+
+
+async function syncDiscordRank() {
+  const button = document.getElementById('sync-discord-rank');
+  const status = document.getElementById('discord-rank-status');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.innerHTML = '<span class="muted">Synchronisation…</span>';
+  try {
+    const data = await Trizone.json('/api/account/discord-rank/sync', { method: 'POST', body: '{}' });
+    const label = data.rank ? Trizone.rankLabel(data.rank) : 'aucun grade payant actif';
+    status.innerHTML = `<div class="notice good">Rôle Discord synchronisé : ${Trizone.escapeHtml(label)}.</div>`;
+  } catch (error) {
+    status.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function syncMinecraftRank() {
+  const button = document.getElementById('sync-minecraft-rank');
+  const status = document.getElementById('minecraft-rank-status');
+  if (!button || !status) return;
+  button.disabled = true;
+  status.innerHTML = '<span class="muted">Mise en file de livraison…</span>';
+  try {
+    const data = await Trizone.json('/api/account/minecraft-rank/sync', { method: 'POST', body: '{}' });
+    const label = Trizone.rankLabel(data.rank || 'default');
+    status.innerHTML = `<div class="notice good">Synchronisation Minecraft demandée : ${Trizone.escapeHtml(label)}. Le plugin la récupère automatiquement.</div>`;
+  } catch (error) {
+    status.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`;
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -75,7 +122,7 @@ async function loadAccount() {
   const rankClass = Trizone.rankClass(u.minecraft_rank || 'default');
 
   root.innerHTML = `
-    ${paymentOk ? '<div class="notice good">Paiement terminé. Tebex va maintenant confirmer et livrer l’achat au serveur.</div>' : ''}
+    ${paymentOk ? '<div class="notice good">Paiement terminé. Stripe va confirmer le paiement par webhook ; la livraison Discord et Minecraft se fait ensuite automatiquement.</div>' : ''}
     <div class="profile-layout">
       <aside class="profile-panel">
         <img class="avatar" src="${Trizone.escapeHtml(avatar)}" alt="Avatar Discord">
@@ -112,14 +159,33 @@ async function loadAccount() {
           <div id="link-code-box"></div>
         </section>
 
+
         <section class="panel">
-          <div class="panel-head"><div><h3>Achats</h3><p>Historique reçu par les webhooks Tebex.</p></div><a class="btn btn-quiet btn-small" href="/shop.html">Boutique</a></div>
+          <div class="panel-head">
+            <div>
+              <h3>Grade Discord</h3>
+              <p>Trizone-bot attribue automatiquement le rôle correspondant à ton grade payé via Stripe.</p>
+            </div>
+          </div>
+          <p class="hint">Le bot ne modifie que les rôles Copper, Iron, Gold, Diamond et Netherite configurés pour la boutique.</p>
+          <div class="inline-actions">
+            <button class="btn btn-quiet" id="sync-discord-rank" type="button">Synchroniser mon rôle Discord</button>
+            <button class="btn btn-quiet" id="sync-minecraft-rank" type="button">Synchroniser mon grade Minecraft</button>
+          </div>
+          <div id="discord-rank-status"></div>
+          <div id="minecraft-rank-status"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><h3>Achats</h3><p>Historique des achats confirmés par les webhooks Stripe.</p></div><a class="btn btn-quiet btn-small" href="/shop.html">Boutique</a></div>
           <div id="purchase-list"><p class="muted">Chargement…</p></div>
         </section>
       </div>
     </div>`;
 
   document.getElementById('generate-code')?.addEventListener('click', generateLinkCode);
+  document.getElementById('sync-discord-rank')?.addEventListener('click', syncDiscordRank);
+  document.getElementById('sync-minecraft-rank')?.addEventListener('click', syncMinecraftRank);
   loadPurchases();
 }
 

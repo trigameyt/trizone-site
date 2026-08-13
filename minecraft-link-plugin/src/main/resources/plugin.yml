@@ -1,9 +1,9 @@
 name: TrizoneWebLink
-version: 1.1.0
+version: 1.2.0
 main: fr.trizone.weblink.TrizoneWebLink
 api-version: '1.21'
 author: trigameYT
-description: Liaison sécurisée entre le site Trizone, Minecraft et le grade LuckPerms.
+description: Liaison sécurisée Trizone + livraison automatique des grades Stripe via LuckPerms.
 softdepend: [LuckPerms]
 commands:
   link:

@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "2.2.0",
+  "version": "2.8.0",
   "private": true,
-  "description": "Site officiel Trizone v2.2 : Discord OAuth, liaison Minecraft, grades, panel admin éditable et boutique Tebex.",
+  "description": "Site officiel Trizone v2.8 : Discord OAuth, liaison Minecraft, panel admin et boutique Stripe Managed Payments avec livraison automatique.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

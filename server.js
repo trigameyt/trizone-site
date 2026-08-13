@@ -187,12 +187,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://*.tebex.io', 'https://*.tebexcdn.com'],
+      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://files.stripe.com', 'https://*.stripe.com'],
       styleSrc: ["'self'"],
       fontSrc: ["'self'", 'data:'],
       scriptSrc: ["'self'"],
       connectSrc: ["'self'"],
-      frameSrc: ["'self'", 'https://*.tebex.io', 'https://checkout.tebex.io', 'https://pay.tebex.io'],
+      frameSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
     },
@@ -225,33 +225,377 @@ function safeEqualHex(a, b) {
   }
 }
 
-// Tebex doit recevoir le body brut pour la vérification de signature.
-app.post('/api/tebex/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+const PAID_RANK_ORDER = ['copper', 'iron', 'gold', 'diamond', 'netherite'];
+
+function paidRankConfig() {
+  return PAID_RANK_ORDER.map((key, index) => ({
+    key,
+    priority: index + 1,
+    priceId: String(process.env[`STRIPE_PRICE_${key.toUpperCase()}_ID`] || '').trim(),
+    roleId: String(process.env[`DISCORD_ROLE_${key.toUpperCase()}_ID`] || '').trim(),
+  }));
+}
+
+function paidRankByKey(key) {
+  const normalized = String(key || '').trim().toLowerCase();
+  return paidRankConfig().find((rank) => rank.key === normalized) || null;
+}
+
+function paidRankByPriceId(priceId) {
+  const id = String(priceId || '').trim();
+  if (!id) return null;
+  return paidRankConfig().find((rank) => rank.priceId && rank.priceId === id) || null;
+}
+
+function discordBotConfig() {
+  return {
+    token: String(process.env.DISCORD_BOT_TOKEN || '').trim(),
+    guildId: String(process.env.DISCORD_GUILD_ID || '').trim(),
+  };
+}
+
+function validDiscordSnowflake(value) {
+  return /^\d{15,22}$/.test(String(value || '').trim());
+}
+
+async function discordRoleRequest(method, discordId, roleId) {
+  const cfg = discordBotConfig();
+  if (!cfg.token || !validDiscordSnowflake(cfg.guildId)) {
+    throw new Error('Trizone-bot non configuré dans Render (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID).');
+  }
+  if (!validDiscordSnowflake(discordId) || !validDiscordSnowflake(roleId)) {
+    throw new Error('Discord ID ou Role ID invalide.');
+  }
+
+  const response = await fetch(
+    `https://discord.com/api/v10/guilds/${cfg.guildId}/members/${discordId}/roles/${roleId}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bot ${cfg.token}`,
+        'X-Audit-Log-Reason': encodeURIComponent('Synchronisation grade boutique Stripe - Trizone'),
+      },
+      signal: AbortSignal.timeout(7000),
+    }
+  );
+
+  // Le joueur n'est pas encore sur le Discord. On garde son achat actif en base
+  // et il pourra resynchroniser plus tard depuis son compte Trizone.
+  if (response.status === 404) return { ok: false, notMember: true };
+  if (response.ok) return { ok: true, notMember: false };
+
+  const body = (await response.text().catch(() => '')).slice(0, 500);
+  throw new Error(`Discord API ${response.status}${body ? `: ${body}` : ''}`);
+}
+
+async function highestActivePaidRank(discordId) {
+  const result = await query(
+    `SELECT rank_key
+     FROM stripe_orders
+     WHERE discord_id = $1 AND active = TRUE`,
+    [discordId]
+  );
+  const active = new Set(result.rows.map((row) => String(row.rank_key || '').toLowerCase()));
+  return paidRankConfig()
+    .filter((rank) => active.has(rank.key))
+    .sort((a, b) => b.priority - a.priority)[0] || null;
+}
+
+async function syncDiscordPaidRank(discordId) {
+  if (!validDiscordSnowflake(discordId)) return { synced: false, reason: 'invalid_discord_id' };
+
+  const ranks = paidRankConfig().filter((rank) => validDiscordSnowflake(rank.roleId));
+  if (!ranks.length) return { synced: false, reason: 'no_roles_configured' };
+
+  const target = await highestActivePaidRank(discordId);
+  if (target && !validDiscordSnowflake(target.roleId)) {
+    return { synced: false, reason: 'target_role_not_configured', target: target.key };
+  }
+
+  // Trizone-bot ne touche qu'aux cinq rôles de grades payants configurés ici.
+  // Les rôles staff / membre / autres restent intacts.
+  for (const rank of ranks) {
+    if (target && rank.key === target.key) continue;
+    const removed = await discordRoleRequest('DELETE', discordId, rank.roleId);
+    if (removed.notMember) return { synced: false, reason: 'not_member', target: target?.key || null };
+  }
+
+  if (target) {
+    const added = await discordRoleRequest('PUT', discordId, target.roleId);
+    if (added.notMember) return { synced: false, reason: 'not_member', target: target.key };
+  }
+
+  return { synced: true, rank: target?.key || null };
+}
+
+function stripeConfig() {
+  return {
+    secretKey: String(process.env.STRIPE_SECRET_KEY || '').trim(),
+    webhookSecret: String(process.env.STRIPE_WEBHOOK_SECRET || '').trim(),
+    apiVersion: String(process.env.STRIPE_API_VERSION || '2025-03-31.basil').trim(),
+  };
+}
+
+async function stripeApi(method, endpoint, form = null) {
+  const { secretKey, apiVersion } = stripeConfig();
+  if (!secretKey || !secretKey.startsWith('sk_')) throw new Error('STRIPE_SECRET_KEY non configurée.');
+
+  const response = await fetch(`https://api.stripe.com/v1${endpoint}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      Accept: 'application/json',
+      'Stripe-Version': apiVersion,
+      ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+    },
+    body: form ? form.toString() : undefined,
+    signal: AbortSignal.timeout(10_000),
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = json?.error?.message || `Stripe API HTTP ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.stripe = json?.error || null;
+    throw error;
+  }
+  return json;
+}
+
+function parseStripeSignatureHeader(header) {
+  const values = {};
+  for (const part of String(header || '').split(',')) {
+    const [key, value] = part.split('=', 2);
+    if (!key || !value) continue;
+    if (!values[key]) values[key] = [];
+    values[key].push(value);
+  }
+  return values;
+}
+
+function verifyStripeWebhook(rawBody, signatureHeader, secret, toleranceSeconds = 300) {
+  if (!Buffer.isBuffer(rawBody)) return false;
+  if (!secret || !signatureHeader) return false;
+  const parsed = parseStripeSignatureHeader(signatureHeader);
+  const timestamp = Number(parsed.t?.[0]);
+  const signatures = parsed.v1 || [];
+  if (!Number.isFinite(timestamp) || signatures.length === 0) return false;
+
+  const age = Math.abs(Math.floor(Date.now() / 1000) - timestamp);
+  if (age > toleranceSeconds) return false;
+
+  const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
+  return signatures.some((signature) => safeEqualHex(expected, signature));
+}
+
+function stripeObjectId(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') return String(value.id || '');
+  return '';
+}
+
+async function enqueueMinecraftRankSync(discordId, reason = 'shop_sync') {
+  const account = await query(
+    `SELECT discord_id, minecraft_uuid, minecraft_username
+     FROM minecraft_accounts WHERE discord_id = $1`,
+    [discordId]
+  );
+  if (!account.rowCount) return { queued: false, reason: 'minecraft_not_linked' };
+
+  const target = await highestActivePaidRank(discordId);
+  const row = account.rows[0];
+
+  const client = await pool.connect();
   try {
-    const secret = process.env.TEBEX_WEBHOOK_SECRET;
-    if (!secret) return res.status(503).json({ error: 'Webhook Tebex non configuré.' });
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM minecraft_deliveries
+       WHERE discord_id = $1 AND status = 'pending'`,
+      [discordId]
+    );
+    const inserted = await client.query(
+      `INSERT INTO minecraft_deliveries(
+         discord_id, minecraft_uuid, minecraft_username, target_rank, reason, status, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+       RETURNING id`,
+      [discordId, row.minecraft_uuid, row.minecraft_username, target?.key || 'default', reason]
+    );
+    await client.query('COMMIT');
+    return { queued: true, id: inserted.rows[0].id, rank: target?.key || 'default' };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
-    const raw = req.body;
-    const bodyHash = crypto.createHash('sha256').update(raw).digest('hex');
-    const expected = crypto.createHmac('sha256', secret).update(bodyHash).digest('hex');
-    const received = req.get('X-Signature');
+async function syncAllPaidRankTargets(discordId, reason) {
+  const [discord, minecraft] = await Promise.allSettled([
+    syncDiscordPaidRank(discordId),
+    enqueueMinecraftRankSync(discordId, reason),
+  ]);
+  if (discord.status === 'rejected') console.warn('[Stripe Discord sync]', discord.reason?.message || discord.reason);
+  if (minecraft.status === 'rejected') console.warn('[Stripe Minecraft sync]', minecraft.reason?.message || minecraft.reason);
+  return {
+    discord: discord.status === 'fulfilled' ? discord.value : { synced: false, reason: 'error' },
+    minecraft: minecraft.status === 'fulfilled' ? minecraft.value : { queued: false, reason: 'error' },
+  };
+}
 
-    if (!safeEqualHex(expected, received)) return res.status(401).json({ error: 'Signature invalide.' });
+async function upsertStripeCheckout(session, eventId, active) {
+  const metadata = session?.metadata || {};
+  const rankKey = String(metadata.trizone_rank || '').toLowerCase();
+  const rank = paidRankByKey(rankKey);
+  const discordId = String(metadata.trizone_discord_id || session?.client_reference_id || '').trim();
+  const minecraftUuid = String(metadata.trizone_minecraft_uuid || '').trim();
+  const minecraftUsername = String(metadata.trizone_minecraft_username || '').trim();
+  const priceId = String(metadata.trizone_price_id || rank?.priceId || '').trim();
 
-    const payload = JSON.parse(raw.toString('utf8'));
-    if (payload.type === 'validation.webhook') return res.status(200).json({ id: payload.id });
+  if (!rank) throw new Error(`Checkout Stripe ${session?.id || ''}: grade Trizone invalide.`);
+  if (!validDiscordSnowflake(discordId)) throw new Error(`Checkout Stripe ${session?.id || ''}: Discord ID invalide.`);
+  if (priceId && paidRankByPriceId(priceId)?.key !== rank.key) throw new Error('Le Price ID Stripe ne correspond pas au grade signé dans la session.');
 
+  const existingUser = await query('SELECT discord_id FROM users WHERE discord_id = $1', [discordId]);
+  if (!existingUser.rowCount) throw new Error('Le compte Discord du paiement n’existe plus sur Trizone.');
+
+  const paymentIntentId = stripeObjectId(session?.payment_intent);
+  const purchasedAt = Number.isFinite(Number(session?.created)) ? new Date(Number(session.created) * 1000) : new Date();
+  const paymentStatus = String(session?.payment_status || (active ? 'paid' : 'unpaid'));
+
+  await query(
+    `INSERT INTO stripe_orders(
+       checkout_session_id, event_id, payment_intent_id, discord_id,
+       minecraft_uuid, minecraft_username, rank_key, price_id,
+       amount_total, currency, payment_status, active, purchased_at, updated_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+     ON CONFLICT (checkout_session_id) DO UPDATE SET
+       event_id = EXCLUDED.event_id,
+       payment_intent_id = COALESCE(EXCLUDED.payment_intent_id, stripe_orders.payment_intent_id),
+       discord_id = EXCLUDED.discord_id,
+       minecraft_uuid = EXCLUDED.minecraft_uuid,
+       minecraft_username = EXCLUDED.minecraft_username,
+       rank_key = EXCLUDED.rank_key,
+       price_id = EXCLUDED.price_id,
+       amount_total = EXCLUDED.amount_total,
+       currency = EXCLUDED.currency,
+       payment_status = EXCLUDED.payment_status,
+       active = EXCLUDED.active,
+       updated_at = NOW()`,
+    [
+      String(session.id), eventId || null, paymentIntentId || null, discordId,
+      minecraftUuid || null, minecraftUsername || null, rank.key, priceId || null,
+      Number.isFinite(Number(session?.amount_total)) ? Number(session.amount_total) : null,
+      String(session?.currency || '').toLowerCase() || null,
+      paymentStatus, Boolean(active), purchasedAt,
+    ]
+  );
+
+  if (active) {
+    const sync = await syncAllPaidRankTargets(discordId, `stripe:${session.id}`);
+    console.log(`[Stripe] grade ${rank.key} activé pour ${discordId}`, sync);
+  }
+  return { discordId, rank: rank.key, active };
+}
+
+async function deactivateStripeOrderByPaymentIntent(paymentIntentId, reason = 'refund') {
+  if (!paymentIntentId) return { handled: false, reason: 'no_payment_intent' };
+  const affected = await query(
+    `UPDATE stripe_orders
+     SET active = FALSE, payment_status = $2, updated_at = NOW()
+     WHERE payment_intent_id = $1 AND active = TRUE
+     RETURNING discord_id, checkout_session_id, rank_key`,
+    [paymentIntentId, reason]
+  );
+  if (!affected.rowCount) return { handled: false, reason: 'order_not_found' };
+
+  const discordIds = [...new Set(affected.rows.map((row) => row.discord_id))];
+  for (const discordId of discordIds) {
+    await syncAllPaidRankTargets(discordId, `stripe:${reason}:${paymentIntentId}`);
+  }
+  return { handled: true, affected: affected.rowCount };
+}
+
+async function handleStripeEvent(event) {
+  const object = event?.data?.object || {};
+
+  if (event.type === 'checkout.session.completed') {
+    const paid = object.payment_status === 'paid' || object.payment_status === 'no_payment_required';
+    return upsertStripeCheckout(object, event.id, paid);
+  }
+
+  if (event.type === 'checkout.session.async_payment_succeeded') {
+    return upsertStripeCheckout(object, event.id, true);
+  }
+
+  if (event.type === 'checkout.session.async_payment_failed') {
+    const result = await upsertStripeCheckout(object, event.id, false);
     await query(
-      `INSERT INTO tebex_events(webhook_id, type, event_date, subject)
-       VALUES ($1, $2, $3, $4::jsonb)
-       ON CONFLICT (webhook_id) DO NOTHING`,
-      [payload.id, payload.type || 'unknown', payload.date || null, JSON.stringify(payload.subject || {})]
+      `UPDATE stripe_orders SET payment_status = 'failed', active = FALSE, updated_at = NOW()
+       WHERE checkout_session_id = $1`,
+      [String(object.id)]
+    );
+    await syncAllPaidRankTargets(result.discordId, `stripe:payment_failed:${object.id}`);
+    return result;
+  }
+
+  if (event.type === 'charge.refunded') {
+    const fullyRefunded = object.refunded === true || (
+      Number.isFinite(Number(object.amount)) && Number(object.amount) > 0 && Number(object.amount_refunded) >= Number(object.amount)
+    );
+    if (!fullyRefunded) return { handled: false, reason: 'partial_refund' };
+    return deactivateStripeOrderByPaymentIntent(stripeObjectId(object.payment_intent), 'refunded');
+  }
+
+  return { handled: false, reason: 'event_not_used' };
+}
+
+// Stripe doit recevoir le body brut pour vérifier Stripe-Signature.
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  const { webhookSecret } = stripeConfig();
+  if (!webhookSecret) return res.status(503).json({ error: 'STRIPE_WEBHOOK_SECRET non configuré.' });
+  if (!verifyStripeWebhook(req.body, req.get('Stripe-Signature'), webhookSecret)) {
+    return res.status(400).json({ error: 'Signature Stripe invalide.' });
+  }
+
+  let event;
+  try {
+    event = JSON.parse(req.body.toString('utf8'));
+  } catch {
+    return res.status(400).json({ error: 'JSON Stripe invalide.' });
+  }
+
+  try {
+    const stored = await query(
+      `INSERT INTO stripe_events(event_id, type, event_created_at, data, processed, received_at)
+       VALUES ($1, $2, $3, $4::jsonb, FALSE, NOW())
+       ON CONFLICT (event_id) DO UPDATE SET type = EXCLUDED.type
+       RETURNING processed`,
+      [
+        String(event.id || ''), String(event.type || 'unknown'),
+        Number.isFinite(Number(event.created)) ? new Date(Number(event.created) * 1000) : null,
+        JSON.stringify(event.data || {}),
+      ]
     );
 
-    res.status(204).end();
+    if (stored.rows[0]?.processed) return res.status(200).json({ received: true, duplicate: true });
+
+    const result = await handleStripeEvent(event);
+    await query(
+      `UPDATE stripe_events SET processed = TRUE, process_error = NULL, processed_at = NOW() WHERE event_id = $1`,
+      [event.id]
+    );
+    return res.status(200).json({ received: true, result });
   } catch (error) {
-    console.error('[Tebex webhook]', error);
-    res.status(500).json({ error: 'Erreur webhook.' });
+    console.error('[Stripe webhook]', event?.type, error);
+    if (event?.id) {
+      await query(
+        `UPDATE stripe_events SET process_error = $2 WHERE event_id = $1`,
+        [event.id, String(error.message || error).slice(0, 1000)]
+      ).catch(() => {});
+    }
+    return res.status(500).json({ error: 'Erreur de traitement Stripe.' });
   }
 });
 
@@ -306,7 +650,7 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.6.0' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '2.8.0' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
@@ -430,6 +774,9 @@ app.get('/auth/discord/callback', sensitiveLimiter, async (req, res) => {
     );
 
     req.session.discordId = user.id;
+    // Si le joueur avait acheté avant de rejoindre le Discord ou si un rôle avait
+    // raté sa livraison, une nouvelle connexion au site tente une resynchronisation.
+    syncDiscordPaidRank(user.id).catch((error) => console.warn('[Discord rank login sync]', error.message));
     res.redirect('/account.html');
   } catch (error) {
     console.error('[Discord OAuth]', error);
@@ -530,6 +877,7 @@ app.post('/api/minecraft/link/confirm', requireMinecraftSecret, sensitiveLimiter
       client.release();
     }
 
+    enqueueMinecraftRankSync(discordId, 'account_linked').catch((error) => console.warn('[Minecraft rank link sync]', error.message));
     res.json({ ok: true, message: `Compte ${username} lié avec succès.`, rank });
   } catch (error) {
     console.error('[minecraft link]', error);
@@ -560,145 +908,206 @@ app.post('/api/minecraft/profile-sync', requireMinecraftSecret, sensitiveLimiter
   }
 });
 
+
+app.get('/api/minecraft/deliveries', requireMinecraftSecret, async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE minecraft_deliveries
+       SET attempt_count = attempt_count + 1, last_attempt_at = NOW(), updated_at = NOW()
+       WHERE id IN (
+         SELECT id FROM minecraft_deliveries
+         WHERE status = 'pending'
+         ORDER BY created_at ASC
+         LIMIT 20
+       )
+       RETURNING id, minecraft_uuid, minecraft_username, target_rank, reason`,
+    );
+    const rows = result.rows.sort((a, b) => Number(a.id) - Number(b.id));
+    if (String(req.query.format || '').toLowerCase() === 'lines') {
+      const lines = rows.map((row) => `${row.id}|${row.minecraft_uuid}|${row.minecraft_username}|${row.target_rank}`).join('\n');
+      res.type('text/plain').send(lines ? `${lines}\n` : '');
+      return;
+    }
+    res.json({ data: rows });
+  } catch (error) {
+    console.error('[minecraft deliveries]', error);
+    res.status(500).json({ error: 'Impossible de charger les livraisons.' });
+  }
+});
+
+app.post('/api/minecraft/deliveries/:id/ack', requireMinecraftSecret, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'ID de livraison invalide.' });
+    const ok = req.body?.ok === true;
+    const errorMessage = String(req.body?.error || '').trim().slice(0, 1000) || null;
+
+    if (!ok) {
+      await query(
+        `UPDATE minecraft_deliveries
+         SET last_error = $2, updated_at = NOW()
+         WHERE id = $1 AND status = 'pending'`,
+        [id, errorMessage || 'Erreur inconnue côté serveur Minecraft']
+      );
+      return res.json({ ok: true, retry: true });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const delivery = await client.query(
+        `UPDATE minecraft_deliveries
+         SET status = 'delivered', delivered_at = NOW(), last_error = NULL, updated_at = NOW()
+         WHERE id = $1 AND status = 'pending'
+         RETURNING discord_id, minecraft_uuid, target_rank`,
+        [id]
+      );
+      if (delivery.rowCount) {
+        const row = delivery.rows[0];
+        await client.query(
+          `UPDATE minecraft_accounts
+           SET minecraft_rank = $2, updated_at = NOW()
+           WHERE discord_id = $1 AND minecraft_uuid = $3`,
+          [row.discord_id, row.target_rank, row.minecraft_uuid]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[minecraft delivery ack]', error);
+    res.status(500).json({ error: 'Impossible de confirmer la livraison.' });
+  }
+});
+
+
 let shopCache = { expires: 0, data: null };
-async function fetchTebexCategories() {
-  const token = process.env.TEBEX_WEBSTORE_TOKEN;
-  if (!token) throw new Error('TEBEX_WEBSTORE_TOKEN non configuré.');
+
+async function fetchStripeShopProducts() {
   if (shopCache.data && Date.now() < shopCache.expires) return shopCache.data;
 
-  const response = await fetch(`https://headless.tebex.io/api/accounts/${encodeURIComponent(token)}/categories?includePackages=1`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!response.ok) throw new Error(`Tebex categories HTTP ${response.status}`);
-  const json = await response.json();
-  shopCache = { data: json, expires: Date.now() + 60_000 };
-  return json;
+  const ranks = paidRankConfig().filter((rank) => rank.priceId);
+  if (!ranks.length) throw new Error('Aucun STRIPE_PRICE_*_ID configuré.');
+
+  const products = [];
+  for (const rank of ranks) {
+    const price = await stripeApi('GET', `/prices/${encodeURIComponent(rank.priceId)}?expand[]=product`);
+    const product = price.product && typeof price.product === 'object' ? price.product : {};
+    if (price.active === false || product.active === false) continue;
+    products.push({
+      id: rank.key,
+      rank: rank.key,
+      name: String(product.name || rank.key),
+      description: String(product.description || `Grade ${rank.key} Trizone`),
+      image: Array.isArray(product.images) ? (product.images[0] || '') : '',
+      unit_amount: Number(price.unit_amount || 0),
+      currency: String(price.currency || 'chf').toUpperCase(),
+      price_id: rank.priceId,
+    });
+  }
+
+  const data = {
+    data: [{ id: 'grades', name: 'Grades', packages: products }],
+    provider: 'stripe_managed_payments',
+  };
+  shopCache = { data, expires: Date.now() + 60_000 };
+  return data;
 }
 
 app.get('/api/shop/categories', async (_req, res) => {
-  try { res.json(await fetchTebexCategories()); }
-  catch (error) {
-    console.error('[Tebex categories]', error.message);
-    res.status(503).json({ error: 'Boutique Tebex non configurée ou indisponible.' });
+  try {
+    res.json(await fetchStripeShopProducts());
+  } catch (error) {
+    console.error('[Stripe products]', error.message);
+    res.status(503).json({ error: 'Boutique Stripe non configurée ou indisponible.' });
   }
 });
-
-function requestIpv4(req) {
-  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  const ip = forwarded || req.ip || '';
-  const cleaned = ip.replace(/^::ffff:/, '');
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(cleaned) ? cleaned : undefined;
-}
 
 app.post('/api/shop/checkout', requireAuth, sensitiveLimiter, async (req, res) => {
   try {
-    const packageId = Number(req.body?.packageId);
-    if (!Number.isInteger(packageId) || packageId <= 0) return res.status(400).json({ error: 'Produit invalide.' });
+    const rankKey = String(req.body?.rank || '').trim().toLowerCase();
+    const rank = paidRankByKey(rankKey);
+    if (!rank || !rank.priceId) return res.status(400).json({ error: 'Produit invalide ou non configuré.' });
 
     const user = await getCurrentUser(req.session.discordId);
-    if (!user?.minecraft_username) return res.status(409).json({ error: 'Lie d’abord ton compte Minecraft depuis la page Compte.' });
-
-    const token = process.env.TEBEX_WEBSTORE_TOKEN;
-    if (!token) return res.status(503).json({ error: 'Tebex non configuré.' });
-
-    const basketBody = {
-      complete_url: `${BASE_URL}/account.html?payment=success`,
-      cancel_url: `${BASE_URL}/shop.html?payment=cancel`,
-      complete_auto_redirect: true,
-      username: user.minecraft_username,
-      custom: {
-        trizone_discord_id: user.discord_id,
-        trizone_minecraft_uuid: user.minecraft_uuid,
-      },
-    };
-    const ipv4 = requestIpv4(req);
-    if (ipv4) basketBody.ip_address = ipv4;
-
-    const basketResponse = await fetch(`https://headless.tebex.io/api/accounts/${encodeURIComponent(token)}/baskets`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(basketBody),
-    });
-    const basketJson = await basketResponse.json().catch(() => ({}));
-    if (!basketResponse.ok) {
-      console.error('[Tebex basket]', basketResponse.status, basketJson);
-      return res.status(502).json({ error: 'Tebex a refusé la création du panier.' });
+    if (!user?.minecraft_username || !user?.minecraft_uuid) {
+      return res.status(409).json({ error: 'Lie d’abord ton compte Minecraft depuis la page Compte.' });
     }
 
-    const basket = basketJson.data || basketJson;
-    const ident = basket.ident;
-    if (!ident) return res.status(502).json({ error: 'Panier Tebex invalide.' });
+    const form = new URLSearchParams();
+    form.set('mode', 'payment');
+    form.set('managed_payments[enabled]', 'true');
+    form.set('line_items[0][price]', rank.priceId);
+    form.set('line_items[0][quantity]', '1');
+    form.set('client_reference_id', String(user.discord_id));
+    form.set('metadata[trizone_rank]', rank.key);
+    form.set('metadata[trizone_price_id]', rank.priceId);
+    form.set('metadata[trizone_discord_id]', String(user.discord_id));
+    form.set('metadata[trizone_minecraft_uuid]', String(user.minecraft_uuid));
+    form.set('metadata[trizone_minecraft_username]', String(user.minecraft_username));
+    form.set('success_url', `${BASE_URL}/account.html?payment=success&session_id={CHECKOUT_SESSION_ID}`);
+    form.set('cancel_url', `${BASE_URL}/shop.html?payment=cancel`);
+    form.set('locale', 'auto');
+    form.set('origin_context', 'web');
 
-    const addResponse = await fetch(`https://headless.tebex.io/api/baskets/${encodeURIComponent(ident)}/packages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ package_id: packageId, quantity: 1 }),
-    });
-    const updated = await addResponse.json().catch(() => ({}));
-    if (!addResponse.ok) {
-      console.error('[Tebex add package]', addResponse.status, updated);
-      return res.status(502).json({ error: 'Impossible d’ajouter ce produit au panier.' });
-    }
-
-    const checkoutUrl = updated?.links?.checkout || basket?.links?.checkout;
-    let authUrl = null;
-    try {
-      const returnUrl = `${BASE_URL}/api/shop/auth-return?basket=${encodeURIComponent(ident)}`;
-      const authResponse = await fetch(
-        `https://headless.tebex.io/api/accounts/${encodeURIComponent(token)}/baskets/${encodeURIComponent(ident)}/auth?returnUrl=${encodeURIComponent(returnUrl)}`,
-        { headers: { Accept: 'application/json' } }
-      );
-      if (authResponse.ok) {
-        const auth = await authResponse.json();
-        const links = Array.isArray(auth) ? auth : (auth.data || []);
-        authUrl = links?.[0]?.url || null;
-      }
-    } catch (error) {
-      console.warn('[Tebex auth optional]', error.message);
-    }
-
-    res.json({ url: authUrl || checkoutUrl, basket: ident });
+    const session = await stripeApi('POST', '/checkout/sessions', form);
+    if (!session?.url) throw new Error('Stripe n’a pas renvoyé de lien Checkout.');
+    res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
-    console.error('[checkout]', error);
-    res.status(500).json({ error: 'Erreur lors de la création du paiement.' });
+    console.error('[Stripe checkout]', error);
+    const message = error?.stripe?.code === 'resource_missing'
+      ? 'Price ID Stripe introuvable. Vérifie les variables STRIPE_PRICE_*_ID.'
+      : 'Erreur lors de la création du paiement Stripe.';
+    res.status(error?.status === 400 ? 400 : 502).json({ error: message });
   }
 });
 
-app.get('/api/shop/auth-return', async (req, res) => {
+app.post('/api/account/discord-rank/sync', requireAuth, sensitiveLimiter, async (req, res) => {
   try {
-    const ident = String(req.query.basket || '');
-    const token = process.env.TEBEX_WEBSTORE_TOKEN;
-    if (!ident || !token) return res.redirect('/shop.html?payment=error');
-
-    const response = await fetch(`https://headless.tebex.io/api/accounts/${encodeURIComponent(token)}/baskets/${encodeURIComponent(ident)}`, {
-      headers: { Accept: 'application/json' },
-    });
-    const json = await response.json().catch(() => ({}));
-    const basket = json.data || json;
-    const checkout = basket?.links?.checkout;
-    if (!checkout) return res.redirect('/shop.html?payment=error');
-    res.redirect(checkout);
+    const result = await syncDiscordPaidRank(req.session.discordId);
+    if (result.reason === 'not_member') {
+      return res.status(409).json({ error: 'Rejoins d’abord le serveur Discord Trizone, puis réessaie.' });
+    }
+    if (result.reason === 'no_roles_configured') {
+      return res.status(503).json({ error: 'Les rôles de grades Discord ne sont pas encore configurés.' });
+    }
+    if (!result.synced) return res.status(400).json({ error: 'Impossible de synchroniser le rôle Discord.' });
+    res.json({ ok: true, rank: result.rank });
   } catch (error) {
-    console.error('[auth return]', error);
-    res.redirect('/shop.html?payment=error');
+    console.error('[Discord rank manual sync]', error);
+    res.status(502).json({ error: 'Trizone-bot n’a pas pu modifier le rôle. Vérifie ses permissions et la hiérarchie des rôles.' });
+  }
+});
+
+
+app.post('/api/account/minecraft-rank/sync', requireAuth, sensitiveLimiter, async (req, res) => {
+  try {
+    const result = await enqueueMinecraftRankSync(req.session.discordId, 'manual_account_sync');
+    if (!result.queued) return res.status(409).json({ error: 'Aucun compte Minecraft lié.' });
+    res.json({ ok: true, rank: result.rank, deliveryId: result.id });
+  } catch (error) {
+    console.error('[Minecraft rank manual sync]', error);
+    res.status(500).json({ error: 'Impossible de préparer la synchronisation Minecraft.' });
   }
 });
 
 app.get('/api/account/purchases', requireAuth, async (req, res) => {
   try {
-    const user = await getCurrentUser(req.session.discordId);
-    const events = await query(
-      `SELECT webhook_id, type, event_date, subject, received_at
-       FROM tebex_events WHERE type LIKE 'payment.%'
-       ORDER BY received_at DESC LIMIT 200`
+    const result = await query(
+      `SELECT checkout_session_id, payment_intent_id, rank_key, price_id,
+              amount_total, currency, payment_status, active, purchased_at, updated_at
+       FROM stripe_orders
+       WHERE discord_id = $1
+       ORDER BY purchased_at DESC
+       LIMIT 50`,
+      [req.session.discordId]
     );
-    const discordId = String(user.discord_id);
-    const mc = String(user.minecraft_username || '').toLowerCase();
-    const matches = events.rows.filter((event) => {
-      const raw = JSON.stringify(event.subject || {}).toLowerCase();
-      return raw.includes(discordId.toLowerCase()) || (mc && raw.includes(mc));
-    }).slice(0, 30);
-    res.json({ data: matches });
+    res.json({ data: result.rows });
   } catch (error) {
     console.error('[purchases]', error);
     res.status(500).json({ error: 'Impossible de charger l’historique.' });
@@ -709,7 +1118,7 @@ app.get('/api/admin/stats', requireAdmin, async (_req, res) => {
   const [users, linked, payments, banned] = await Promise.all([
     query('SELECT COUNT(*)::int AS count FROM users'),
     query('SELECT COUNT(*)::int AS count FROM minecraft_accounts'),
-    query("SELECT COUNT(*)::int AS count FROM tebex_events WHERE type = 'payment.completed'"),
+    query("SELECT COUNT(*)::int AS count FROM stripe_orders WHERE active = TRUE OR payment_status IN ('paid','refunded')"),
     query('SELECT COUNT(*)::int AS count FROM users WHERE banned = TRUE'),
   ]);
   res.json({
@@ -760,8 +1169,9 @@ app.delete('/api/admin/users/:discordId/minecraft', requireAdmin, sensitiveLimit
 
 app.get('/api/admin/events', requireAdmin, async (_req, res) => {
   const result = await query(
-    `SELECT webhook_id, type, event_date, subject, received_at
-     FROM tebex_events ORDER BY received_at DESC LIMIT 150`
+    `SELECT event_id AS webhook_id, type, event_created_at AS event_date,
+            data AS subject, processed, process_error, received_at
+     FROM stripe_events ORDER BY received_at DESC LIMIT 150`
   );
   res.json({ data: result.rows });
 });
@@ -832,7 +1242,7 @@ app.use((req, res) => {
 });
 
 initDatabase()
-  .then(() => app.listen(PORT, () => console.log(`Trizone site v2.2 lancé sur ${BASE_URL} (port ${PORT})`)))
+  .then(() => app.listen(PORT, () => console.log(`Trizone site v2.8 lancé sur ${BASE_URL} (port ${PORT})`)))
   .catch((error) => {
     console.error('Impossible d’initialiser la base de données:', error);
     process.exit(1);

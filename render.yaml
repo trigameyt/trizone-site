@@ -19,15 +19,41 @@ services:
         sync: false
       - key: DISCORD_REDIRECT_URI
         sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: DISCORD_ROLE_COPPER_ID
+        sync: false
+      - key: DISCORD_ROLE_IRON_ID
+        sync: false
+      - key: DISCORD_ROLE_GOLD_ID
+        sync: false
+      - key: DISCORD_ROLE_DIAMOND_ID
+        sync: false
+      - key: DISCORD_ROLE_NETHERITE_ID
+        sync: false
       - key: ADMIN_DISCORD_IDS
         sync: false
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_SSL
         value: "true"
-      - key: TEBEX_WEBSTORE_TOKEN
+      - key: STRIPE_API_VERSION
+        value: 2025-03-31.basil
+      - key: STRIPE_SECRET_KEY
         sync: false
-      - key: TEBEX_WEBHOOK_SECRET
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_COPPER_ID
+        sync: false
+      - key: STRIPE_PRICE_IRON_ID
+        sync: false
+      - key: STRIPE_PRICE_GOLD_ID
+        sync: false
+      - key: STRIPE_PRICE_DIAMOND_ID
+        sync: false
+      - key: STRIPE_PRICE_NETHERITE_ID
         sync: false
       - key: MINECRAFT_LINK_SECRET
         sync: false
@@ -35,7 +61,13 @@ services:
         sync: false
       - key: PTERODACTYL_API_KEY
         sync: false
-      - key: PTERODACTYL_SERVER_ID
+      - key: PTERODACTYL_PROXY_ID
         sync: false
-      - key: PTERODACTYL_SERVER_LABEL
-        value: "Proxy"
+      - key: PTERODACTYL_WARZONE_ID
+        sync: false
+      - key: PTERODACTYL_SPAWN_ID
+        sync: false
+      - key: PTERODACTYL_MINIGAME_ID
+        sync: false
+      - key: PTERODACTYL_AUTH_ID
+        sync: false

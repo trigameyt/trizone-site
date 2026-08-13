@@ -141,8 +141,8 @@ async function loadAdminData(config) {
 
   const eventsRoot = document.getElementById('events-list');
   eventsRoot.innerHTML = events.data?.length
-    ? events.data.map((e) => `<details class="event-item"><summary><strong>${Trizone.escapeHtml(e.type)}</strong><span>${fmtDate(e.event_date || e.received_at)}</span></summary><pre>${Trizone.escapeHtml(JSON.stringify(e.subject, null, 2).slice(0, 5000))}</pre></details>`).join('')
-    : '<p class="muted">Aucun événement Tebex reçu.</p>';
+    ? events.data.map((e) => `<details class="event-item"><summary><strong>${Trizone.escapeHtml(e.type)}</strong><span>${fmtDate(e.event_date || e.received_at)}</span></summary>${e.process_error ? `<div class="notice bad">${Trizone.escapeHtml(e.process_error)}</div>` : ''}<pre>${Trizone.escapeHtml(JSON.stringify(e.subject, null, 2).slice(0, 5000))}</pre></details>`).join('')
+    : '<p class="muted">Aucun événement Stripe reçu.</p>';
 }
 
 async function initAdmin() {
@@ -177,7 +177,7 @@ async function initAdmin() {
       </section>
 
       <section class="panel">
-        <div class="panel-head"><div><h3>Événements Tebex</h3><p>Derniers webhooks reçus par le site.</p></div></div>
+        <div class="panel-head"><div><h3>Événements Stripe</h3><p>Derniers webhooks Stripe reçus et état de leur traitement.</p></div></div>
         <div id="events-list" class="events-list"><p class="muted">Chargement…</p></div>
       </section>
     </div>`;

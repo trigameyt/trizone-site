@@ -51,21 +51,21 @@
 
           <article class="panel" id="conditions">
             <h2>Boutique et conclusion d’un achat</h2>
-            <p>La boutique de Trizone affiche les produits configurés dans Tebex. Tebex traite le paiement en tant que <em>Merchant of Record</em> et affiche le total final, les taxes applicables et ses propres conditions au moment du checkout.</p>
+            <p>La boutique de Trizone affiche les grades configurés dans Stripe. Pour les transactions éligibles à Stripe Managed Payments, Link agit comme <em>Merchant of Record</em> au checkout et Stripe/Link affiche le total, les taxes applicables et les conditions de paiement.</p>
             <ol class="steps">
               <li>Le joueur choisit un produit sur la boutique Trizone.</li>
               <li>Il vérifie le compte Discord et le pseudo Minecraft liés à son profil.</li>
-              <li>Le bouton <strong>Acheter</strong> crée un panier Tebex.</li>
-              <li>Le joueur peut vérifier les informations et le prix dans le checkout Tebex avant de payer.</li>
-              <li>La commande est confirmée électroniquement par Tebex, puis la livraison est envoyée au serveur.</li>
+              <li>Le bouton <strong>Acheter</strong> crée une session Stripe Checkout avec Managed Payments activé.</li>
+              <li>Le joueur peut vérifier les informations, la devise locale proposée et le prix final dans Stripe Checkout avant de payer.</li>
+              <li>Stripe confirme la transaction par webhook ; Trizone met ensuite en file la livraison du grade Minecraft et du rôle Discord.</li>
             </ol>
-            <p>Pour une boutique destinée à la clientèle suisse, configure les prix principaux en CHF dans Tebex et vérifie que le total affiché au client correspond bien au prix effectivement dû.</p>
+            <p>Les prix de base peuvent être configurés en CHF. Managed Payments peut proposer une devise locale au client selon sa localisation et les fonctions Stripe disponibles. La couverture fiscale Managed Payments n’est pas universelle : pour les juridictions que Stripe ne prend pas en charge, les obligations applicables restent à vérifier par l’exploitant.</p>
           </article>
 
           <article class="panel" id="delivery">
             <h2>Livraison, support et remboursements</h2>
-            <p>Les avantages numériques sont normalement livrés automatiquement par le plugin Tebex après confirmation du paiement. En cas de problème de livraison, contacte Trizone avec le pseudo Minecraft et la référence de paiement.</p>
-            <p>Les demandes de remboursement suivent la politique affichée par Tebex et les règles applicables au checkout. Le droit suisse ne prévoit pas de droit général de révocation pour tous les achats effectués sur Internet ; d’éventuels droits supplémentaires peuvent toutefois résulter des conditions Tebex ou du droit applicable à la transaction.</p>
+            <p>Les avantages numériques sont normalement livrés automatiquement après confirmation du paiement : Trizone-bot synchronise le rôle Discord et TrizoneWebLink synchronise le groupe LuckPerms. En cas de problème, contacte Trizone avec le pseudo Minecraft et la référence Stripe/Link.</p>
+            <p>Les demandes de remboursement et le support transactionnel sont traités selon les conditions affichées dans Stripe/Link et les règles applicables à la transaction. Un remboursement intégral détecté par le site désactive automatiquement le droit boutique correspondant.</p>
             <div id="extra-terms" class="legal-extra" hidden></div>
           </article>
 
@@ -76,9 +76,9 @@
               <li>identifiant, pseudo et avatar Discord obtenus via OAuth2 ;</li>
               <li>pseudo, UUID et grade Minecraft lorsque le compte est lié ;</li>
               <li>codes temporaires de liaison ;</li>
-              <li>événements techniques reçus de Tebex pour afficher l’historique et suivre la livraison.</li>
+              <li>événements techniques reçus de Stripe pour afficher l’historique et suivre la livraison.</li>
             </ul>
-            <p>Les données peuvent être traitées par les prestataires utilisés pour faire fonctionner le service, notamment Discord (connexion), Render (hébergement), Supabase/PostgreSQL (base de données) et Tebex (boutique et paiement). Tebex reçoit directement les informations de paiement nécessaires à la transaction.</p>
+            <p>Les données peuvent être traitées par les prestataires utilisés pour faire fonctionner le service, notamment Discord (connexion), Render (hébergement), Supabase/PostgreSQL (base de données) et Stripe/Link (checkout et paiement). Trizone ne reçoit pas les données complètes de carte bancaire.</p>
             <p>Tu peux demander l’accès, la rectification ou la suppression des données personnelles traitées par Trizone en utilisant l’adresse ci-dessous. Certaines données liées à une transaction peuvent devoir être conservées par le prestataire de paiement selon ses propres obligations.</p>
             <div class="legal-contact single"><div><span>Contact vie privée</span><strong id="privacy-email">À renseigner</strong></div></div>
           </article>
