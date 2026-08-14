@@ -652,17 +652,29 @@ function normalizeUuid(value) {
   return raw;
 }
 
+const DUEL_TIER_ORDER = ['LT5','HT5','LT4','HT4','LT3','HT3','LT2','HT2','LT1','HT1'];
+const DUEL_TIER_DEFAULTS = Object.freeze({LT5:300,HT5:350,LT4:400,HT4:450,LT3:500,HT3:600,LT2:800,HT2:1000,LT1:1250,HT1:1500});
+let duelTierThresholds = { ...DUEL_TIER_DEFAULTS };
+
+function normalizeDuelTierThresholds(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const out = {};
+  let previous = -1;
+  for (const tier of DUEL_TIER_ORDER) {
+    const n = Number(value[tier]);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n <= previous) return null;
+    out[tier] = n;
+    previous = n;
+  }
+  return out;
+}
+
 function duelTier(eloValue) {
   const elo = Number(eloValue || 0);
-  if (elo >= 1500) return 'HT1';
-  if (elo >= 1250) return 'LT1';
-  if (elo >= 1000) return 'HT2';
-  if (elo >= 800) return 'LT2';
-  if (elo >= 600) return 'HT3';
-  if (elo >= 500) return 'LT3';
-  if (elo >= 450) return 'HT4';
-  if (elo >= 400) return 'LT4';
-  if (elo >= 350) return 'HT5';
+  for (let i = DUEL_TIER_ORDER.length - 1; i >= 0; i -= 1) {
+    const tier = DUEL_TIER_ORDER[i];
+    if (elo >= duelTierThresholds[tier]) return tier;
+  }
   return 'LT5';
 }
 
@@ -1179,6 +1191,7 @@ async function fetchStripeShopProducts() {
 app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
   const kits = Array.isArray(req.body?.kits) ? req.body.kits.slice(0, 250) : [];
   const players = Array.isArray(req.body?.players) ? req.body.players.slice(0, 10000) : [];
+  const incomingTiers = normalizeDuelTierThresholds(req.body?.tiers);
   if (!kits.length) return res.status(400).json({ error: 'Aucun kit dans le snapshot.' });
   const client = await pool.connect();
   try {
@@ -1206,7 +1219,8 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
       }
     }
     await client.query('COMMIT');
-    res.json({ ok: true, kits: kits.length, players: players.length });
+    if (incomingTiers) duelTierThresholds = incomingTiers;
+    res.json({ ok: true, kits: kits.length, players: players.length, tiers: duelTierThresholds });
   } catch (error) { await client.query('ROLLBACK'); console.error('[duels snapshot]', error); res.status(500).json({ error: 'Synchronisation duels impossible.' }); }
   finally { client.release(); }
 });
@@ -1223,7 +1237,7 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
 });
 
 app.get('/api/duels/kits', async (_req,res) => {
-  try { const r=await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits ORDER BY sort_order, display_name'); res.json({kits:r.rows}); }
+  try { const r=await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits ORDER BY sort_order, display_name'); res.json({kits:r.rows, tiers:duelTierThresholds}); }
   catch(error){ console.error('[duels kits]',error); res.status(500).json({error:'Impossible de charger les kits.'}); }
 });
 
