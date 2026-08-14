@@ -681,6 +681,8 @@ async function duelPlayerPayload(identity) {
          SELECT minecraft_uuid, minecraft_username, updated_at FROM duel_player_stats
          UNION ALL
          SELECT minecraft_uuid, minecraft_username, updated_at FROM duel_player_settings
+         UNION ALL
+         SELECT minecraft_uuid, minecraft_username, updated_at FROM minecraft_accounts
        ) x
        WHERE LOWER(minecraft_username) = LOWER($1)
        ORDER BY updated_at DESC LIMIT 1`,
@@ -693,18 +695,37 @@ async function duelPlayerPayload(identity) {
   const [settings, rows, catalog, overallRank] = await Promise.all([
     query(`SELECT selected_kit, minecraft_username FROM duel_player_settings WHERE minecraft_uuid = $1`, [uuid]),
     query(`
-      SELECT * FROM (
-        SELECT s.minecraft_uuid, s.minecraft_username, s.kit_key, s.elo, s.wins, s.losses, s.kills, s.deaths, s.streak, s.best_streak, s.updated_at,
-               RANK() OVER (PARTITION BY s.kit_key ORDER BY s.elo DESC, s.wins DESC, s.losses ASC, s.updated_at ASC) AS placement,
-               k.display_name, k.icon_material, k.emoji, k.sort_order
-        FROM duel_player_stats s JOIN duel_kits k ON k.kit_key = s.kit_key
-      ) ranked WHERE minecraft_uuid = $1 ORDER BY sort_order, display_name
+      WITH identities AS (
+        SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username FROM (
+          SELECT minecraft_uuid,minecraft_username FROM minecraft_accounts
+          UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_stats
+          UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_settings WHERE minecraft_username IS NOT NULL
+        ) x GROUP BY minecraft_uuid
+      ), base AS (
+        SELECT i.minecraft_uuid,i.minecraft_username,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,
+               COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
+               COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths,COALESCE(s.streak,0)::int AS streak,
+               COALESCE(s.best_streak,0)::int AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played
+        FROM identities i CROSS JOIN duel_kits k
+        LEFT JOIN duel_player_stats s ON s.minecraft_uuid=i.minecraft_uuid AND s.kit_key=k.kit_key
+      ), ranked AS (
+        SELECT *,RANK() OVER (PARTITION BY kit_key ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
+      ) SELECT * FROM ranked WHERE minecraft_uuid=$1 ORDER BY sort_order,display_name
     `, [uuid]),
     query(`SELECT kit_key, display_name, icon_material, emoji, sort_order FROM duel_kits ORDER BY sort_order, display_name`),
     query(`
-      WITH agg AS (
-        SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username, ROUND(AVG(elo))::int AS elo, SUM(wins)::int AS wins, SUM(losses)::int AS losses, SUM(kills)::int AS kills, SUM(deaths)::int AS deaths
-        FROM duel_player_stats GROUP BY minecraft_uuid
+      WITH identities AS (
+        SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username FROM (
+          SELECT minecraft_uuid,minecraft_username FROM minecraft_accounts
+          UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_stats
+          UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_settings WHERE minecraft_username IS NOT NULL
+        ) x GROUP BY minecraft_uuid
+      ), agg AS (
+        SELECT i.minecraft_uuid,i.minecraft_username,COALESCE(ROUND(AVG(s.elo))::int,300) AS elo,
+               COALESCE(SUM(s.wins),0)::int AS wins,COALESCE(SUM(s.losses),0)::int AS losses,
+               COALESCE(SUM(s.kills),0)::int AS kills,COALESCE(SUM(s.deaths),0)::int AS deaths
+        FROM identities i LEFT JOIN duel_player_stats s ON s.minecraft_uuid=i.minecraft_uuid
+        GROUP BY i.minecraft_uuid,i.minecraft_username
       ), ranked AS (
         SELECT *, RANK() OVER (ORDER BY elo DESC, wins DESC, losses ASC) AS placement FROM agg
       ) SELECT * FROM ranked WHERE minecraft_uuid = $1
@@ -736,7 +757,7 @@ async function duelPlayerPayload(identity) {
       streak: Number(row?.streak ?? 0),
       best_streak: Number(row?.best_streak ?? 0),
       placement: Number(row?.placement ?? 0),
-      played: Boolean(row),
+      played: Boolean(row?.played),
       updated_at: row?.updated_at || null
     };
   });
@@ -1212,19 +1233,66 @@ app.get('/api/duels/player', async (req,res) => {
 });
 
 app.get('/api/duels/leaderboard', async (req,res) => {
-  const kitRaw=String(req.query.kit||'overall'); const limit=Math.min(100,Math.max(10,Number(req.query.limit||50)));
+  const kitRaw=String(req.query.kit||'overall');
+  const limit=Math.min(100,Math.max(10,Number(req.query.limit||50)));
   try {
+    // Tous les joueurs connus du site/duels existent à 300 ELO par défaut, même avant leur premier duel.
+    // Cela évite un leaderboard vide pour un compte Minecraft déjà lié.
+    const identitiesSql = `
+      SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username FROM (
+        SELECT minecraft_uuid,minecraft_username FROM minecraft_accounts
+        UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_stats
+        UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_settings WHERE minecraft_username IS NOT NULL
+      ) identities_raw GROUP BY minecraft_uuid`;
+
     let rows;
     if(kitRaw==='overall') {
-      rows=(await query(`WITH agg AS (SELECT minecraft_uuid,MAX(minecraft_username) AS minecraft_username,ROUND(AVG(elo))::int AS elo,SUM(wins)::int AS wins,SUM(losses)::int AS losses,SUM(kills)::int AS kills,SUM(deaths)::int AS deaths FROM duel_player_stats GROUP BY minecraft_uuid) SELECT * FROM agg ORDER BY elo DESC,wins DESC,losses ASC LIMIT $1`,[limit])).rows;
+      rows=(await query(`
+        WITH identities AS (${identitiesSql}), agg AS (
+          SELECT i.minecraft_uuid,i.minecraft_username,
+                 COALESCE(ROUND(AVG(s.elo))::int,300) AS elo,
+                 COALESCE(SUM(s.wins),0)::int AS wins,
+                 COALESCE(SUM(s.losses),0)::int AS losses,
+                 COALESCE(SUM(s.kills),0)::int AS kills,
+                 COALESCE(SUM(s.deaths),0)::int AS deaths
+          FROM identities i LEFT JOIN duel_player_stats s ON s.minecraft_uuid=i.minecraft_uuid
+          GROUP BY i.minecraft_uuid,i.minecraft_username
+        ), ranked AS (
+          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM agg
+        ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $1`,[limit])).rows;
     } else {
-      const kit=normalizeKitKey(kitRaw); if(!kit) return res.status(400).json({error:'Kit invalide.'});
-      rows=(await query(`SELECT minecraft_uuid,minecraft_username,elo,wins,losses,kills,deaths FROM duel_player_stats WHERE kit_key=$1 ORDER BY elo DESC,wins DESC,losses ASC LIMIT $2`,[kit,limit])).rows;
+      const kit=normalizeKitKey(kitRaw);
+      if(!kit) return res.status(400).json({error:'Kit invalide.'});
+      const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1',[kit]);
+      if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
+      rows=(await query(`
+        WITH identities AS (${identitiesSql}), base AS (
+          SELECT i.minecraft_uuid,i.minecraft_username,
+                 COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,
+                 COALESCE(s.losses,0)::int AS losses,COALESCE(s.kills,0)::int AS kills,
+                 COALESCE(s.deaths,0)::int AS deaths
+          FROM identities i LEFT JOIN duel_player_stats s ON s.minecraft_uuid=i.minecraft_uuid AND s.kit_key=$1
+        ), ranked AS (
+          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
+        ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $2`,[kit,limit])).rows;
     }
-    const uuids=rows.map(r=>r.minecraft_uuid); let badges=[];
-    if(uuids.length) badges=(await query(`SELECT s.minecraft_uuid,s.kit_key,s.elo,k.display_name,k.emoji,k.sort_order FROM duel_player_stats s JOIN duel_kits k ON k.kit_key=s.kit_key WHERE s.minecraft_uuid = ANY($1::text[]) ORDER BY k.sort_order,k.display_name`,[uuids])).rows;
-    const byPlayer=new Map(); for(const b of badges){ if(!byPlayer.has(b.minecraft_uuid))byPlayer.set(b.minecraft_uuid,[]); byPlayer.get(b.minecraft_uuid).push({kit:b.kit_key,name:b.display_name,emoji:b.emoji,elo:Number(b.elo),tier:duelTier(b.elo)}); }
-    res.json({kit:kitRaw, entries:rows.map((r,i)=>({position:i+1,uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.minecraft_uuid)||[]}))});
+
+    const uuids=rows.map(r=>r.minecraft_uuid);
+    let badges=[];
+    if(uuids.length) badges=(await query(`
+      SELECT ids.minecraft_uuid,k.kit_key,k.display_name,k.emoji,k.sort_order,COALESCE(s.elo,300)::int AS elo
+      FROM UNNEST($1::text[]) AS ids(minecraft_uuid)
+      CROSS JOIN duel_kits k
+      LEFT JOIN duel_player_stats s ON s.minecraft_uuid=ids.minecraft_uuid AND s.kit_key=k.kit_key
+      ORDER BY ids.minecraft_uuid,k.sort_order,k.display_name`,[uuids])).rows;
+    const byPlayer=new Map();
+    for(const b of badges){
+      if(!byPlayer.has(b.minecraft_uuid)) byPlayer.set(b.minecraft_uuid,[]);
+      byPlayer.get(b.minecraft_uuid).push({kit:b.kit_key,name:b.display_name,emoji:b.emoji,elo:Number(b.elo),tier:duelTier(b.elo)});
+    }
+    res.json({kit:kitRaw,entries:rows.map((r)=>(
+      {position:Number(r.placement||0),uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.minecraft_uuid)||[]}
+    ))});
   } catch(error){ console.error('[duels leaderboard]',error); res.status(500).json({error:'Impossible de charger le leaderboard.'}); }
 });
 
@@ -1243,15 +1311,31 @@ app.post('/api/account/duels/settings', requireAuth, sensitiveLimiter, async (re
 
 // ---- Inventaire Survie / Ender Chest ----
 app.post('/api/minecraft/game-sync', requireMinecraftSecret, minecraftSyncLimiter, async (req,res) => {
-  try { const uuid=normalizeUuid(req.body?.uuid); if(!uuid) return res.status(400).json({error:'UUID invalide.'}); const username=String(req.body?.username||uuid).slice(0,32); const source=String(req.body?.source_server||'Lobby').slice(0,64);
-    const inventory=Array.isArray(req.body?.inventory)?req.body.inventory.slice(0,60):[]; const armor=Array.isArray(req.body?.armor)?req.body.armor.slice(0,8):[]; const ender=Array.isArray(req.body?.ender_chest)?req.body.ender_chest.slice(0,40):[]; const offhand=req.body?.offhand && typeof req.body.offhand==='object'?req.body.offhand:null;
+  try {
+    const uuid=normalizeUuid(req.body?.uuid);
+    if(!uuid) return res.status(400).json({error:'UUID invalide.'});
+    const expectedWorld=String(process.env.MINECRAFT_SURVIVAL_WORLD||'world').trim().toLowerCase();
+    const sourceWorld=String(req.body?.source_world||'').trim().toLowerCase();
+    if(sourceWorld!==expectedWorld) return res.status(409).json({error:`Seul l'inventaire du monde ${expectedWorld} peut être synchronisé.`});
+    const username=String(req.body?.username||uuid).slice(0,32);
+    const source=String(req.body?.source_server||'Lobby').slice(0,64);
+    const inventory=Array.isArray(req.body?.inventory)?req.body.inventory.slice(0,60):[];
+    const armor=Array.isArray(req.body?.armor)?req.body.armor.slice(0,8):[];
+    const ender=Array.isArray(req.body?.ender_chest)?req.body.ender_chest.slice(0,40):[];
+    const offhand=req.body?.offhand && typeof req.body.offhand==='object'?req.body.offhand:null;
     await query(`INSERT INTO minecraft_game_data(minecraft_uuid,minecraft_username,source_server,inventory,armor,offhand,ender_chest,updated_at) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username,source_server=EXCLUDED.source_server,inventory=EXCLUDED.inventory,armor=EXCLUDED.armor,offhand=EXCLUDED.offhand,ender_chest=EXCLUDED.ender_chest,updated_at=NOW()`,[uuid,username,source,JSON.stringify(inventory),JSON.stringify(armor),JSON.stringify(offhand),JSON.stringify(ender)]);
-    res.json({ok:true});
+    res.json({ok:true,world:expectedWorld});
   } catch(error){ console.error('[game sync]',error); res.status(500).json({error:'Synchronisation inventaire impossible.'}); }
 });
 
 app.get('/api/account/game-data', requireAuth, async (req,res) => {
-  try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.json({linked:false}); const r=await query('SELECT minecraft_username,source_server,inventory,armor,offhand,ender_chest,updated_at FROM minecraft_game_data WHERE minecraft_uuid=$1',[me.minecraft_uuid]); res.json({linked:true,data:r.rows[0]||null}); }
+  try {
+    const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.json({linked:false});
+    const r=await query('SELECT minecraft_username,source_server,inventory,armor,offhand,ender_chest,updated_at FROM minecraft_game_data WHERE minecraft_uuid=$1',[me.minecraft_uuid]);
+    const data=r.rows[0]||null;
+    if(data) data.source_world=String(process.env.MINECRAFT_SURVIVAL_WORLD||'world');
+    res.json({linked:true,data});
+  }
   catch(error){ console.error('[account game data]',error); res.status(500).json({error:'Impossible de charger ton inventaire.'}); }
 });
 

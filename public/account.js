@@ -73,13 +73,22 @@ function itemColorClass(type) {
 function renderItem(item, slot, hotbar = false) {
   if (!item || !item.type || item.type === 'AIR') return `<div class="mc-slot empty ${hotbar ? 'hotbar-slot' : ''}" title="Slot ${slot + 1}"><span class="mc-slot-number">${slot + 1}</span></div>`;
   const title = item.name || prettyMaterial(item.type);
-  const enchants = item.enchants && Object.keys(item.enchants).length
-    ? `\n${Object.entries(item.enchants).map(([k, v]) => `${prettyMaterial(k)} ${v}`).join(', ')}` : '';
-  const lore = Array.isArray(item.lore) && item.lore.length ? `\n${item.lore.join(' • ')}` : '';
-  return `<div class="mc-slot ${itemColorClass(item.type)} ${hotbar ? 'hotbar-slot' : ''}" title="${Trizone.escapeHtml(`${title}${enchants}${lore}`)}">
+  const materialId = `minecraft:${String(item.type).toLowerCase()}`;
+  const amount = Math.max(1, Number(item.amount || 1));
+  const enchantEntries = item.enchants && typeof item.enchants === 'object' ? Object.entries(item.enchants) : [];
+  const loreEntries = Array.isArray(item.lore) ? item.lore.filter(Boolean) : [];
+  const tooltipLines = [
+    `<strong>${Trizone.escapeHtml(title)}</strong>`,
+    `<code>${Trizone.escapeHtml(materialId)}</code>`,
+    `<span>Quantité : <b>${amount}</b></span>`,
+    ...enchantEntries.slice(0, 6).map(([k, v]) => `<span>✦ ${Trizone.escapeHtml(prettyMaterial(k))} ${Trizone.escapeHtml(String(v))}</span>`),
+    ...loreEntries.slice(0, 4).map((line) => `<span>${Trizone.escapeHtml(String(line))}</span>`),
+  ];
+  return `<div class="mc-slot ${itemColorClass(item.type)} ${hotbar ? 'hotbar-slot' : ''}" tabindex="0" aria-label="${Trizone.escapeHtml(`${title}, ${materialId}, quantité ${amount}`)}">
     <span class="mc-item-symbol">${itemSymbol(item.type)}</span>
-    ${Number(item.amount || 1) > 1 ? `<b class="mc-count">${Number(item.amount)}</b>` : ''}
-    <small>${Trizone.escapeHtml(title)}</small>
+    ${amount > 1 ? `<b class="mc-count">${amount}</b>` : ''}
+    <small>${Trizone.escapeHtml(prettyMaterial(item.type))}</small>
+    <span class="mc-item-tooltip">${tooltipLines.join('')}</span>
   </div>`;
 }
 

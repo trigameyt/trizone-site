@@ -702,3 +702,22 @@ td small { color: var(--muted); margin-top: 3px; }
 
 /* CSP-safe hidden textarea used by the clipboard fallback. */
 .clipboard-proxy { position:fixed; left:-10000px; top:0; width:1px; height:1px; opacity:0; pointer-events:none; }
+
+/* v3.0.5 — identification claire des blocs/items de l'inventaire */
+.mc-slot:not(.empty) { overflow:visible; }
+.mc-slot:not(.empty):focus { outline:2px solid #b75cff; outline-offset:2px; z-index:15; }
+.mc-item-tooltip {
+  position:absolute; z-index:30; left:50%; bottom:calc(100% + 9px); transform:translateX(-50%) translateY(3px);
+  width:max-content; min-width:170px; max-width:280px; padding:9px 10px; border:1px solid #5a3f70; border-radius:8px;
+  background:#0a0710; box-shadow:0 12px 30px rgba(0,0,0,.55),0 0 18px rgba(151,76,255,.13);
+  color:#eee7f5; font-size:.72rem; line-height:1.35; text-align:left; pointer-events:none; opacity:0; visibility:hidden;
+  transition:opacity .12s ease,transform .12s ease,visibility .12s ease;
+}
+.mc-item-tooltip::after { content:""; position:absolute; left:50%; top:100%; transform:translateX(-50%); border:6px solid transparent; border-top-color:#5a3f70; }
+.mc-item-tooltip strong,.mc-item-tooltip code,.mc-item-tooltip span { display:block; }
+.mc-item-tooltip strong { color:#fff; font-size:.78rem; margin-bottom:3px; }
+.mc-item-tooltip code { color:#c797ff; background:#17101e; border:1px solid #31213d; border-radius:4px; padding:2px 5px; margin:3px 0 5px; font-size:.66rem; }
+.mc-item-tooltip span { color:#c3b9ca; margin-top:2px; }
+.mc-slot:not(.empty):hover .mc-item-tooltip,.mc-slot:not(.empty):focus .mc-item-tooltip { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+.mc-slot small { color:#d5c8dd; opacity:.78; }
+@media (max-width:720px) { .mc-item-tooltip { min-width:150px; max-width:220px; font-size:.67rem; } }
