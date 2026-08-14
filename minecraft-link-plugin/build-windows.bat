@@ -15,5 +15,5 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo JAR cree dans target\TrizoneWebLink-1.2.0.jar
+echo JAR cree dans target\TrizoneWebLink-1.3.2.jar
 pause

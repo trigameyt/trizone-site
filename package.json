@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.0.0",
+  "version": "3.0.3",
   "private": true,
-  "description": "Site officiel Trizone v3.0 : Discord OAuth, liaison Minecraft, panel admin et boutique Stripe Managed Payments avec livraison automatique.",
+  "description": "Site officiel Trizone v3.0.3 : Discord OAuth, liaison Minecraft, panel admin et boutique Stripe Managed Payments avec livraison automatique.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

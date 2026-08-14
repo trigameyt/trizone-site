@@ -95,6 +95,15 @@ CREATE TABLE IF NOT EXISTS duel_player_stats (
     PRIMARY KEY (minecraft_uuid, kit_key)
 );
 CREATE TABLE IF NOT EXISTS duel_player_settings (minecraft_uuid TEXT PRIMARY KEY, minecraft_username TEXT, selected_kit TEXT REFERENCES duel_kits(kit_key) ON DELETE SET NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+
+CREATE TABLE IF NOT EXISTS duel_sync_files (
+  file_key TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  source_server TEXT NOT NULL DEFAULT 'Lobby',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS minecraft_game_data (
     minecraft_uuid TEXT PRIMARY KEY, minecraft_username TEXT NOT NULL, source_server TEXT NOT NULL DEFAULT 'Lobby', inventory JSONB NOT NULL DEFAULT '[]'::jsonb,
     armor JSONB NOT NULL DEFAULT '[]'::jsonb, offhand JSONB, ender_chest JSONB NOT NULL DEFAULT '[]'::jsonb, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

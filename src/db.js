@@ -122,6 +122,14 @@ async function initDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS duel_sync_files (
+      file_key TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      source_server TEXT NOT NULL DEFAULT 'Lobby',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS minecraft_game_data (
       minecraft_uuid TEXT PRIMARY KEY,
       minecraft_username TEXT NOT NULL,

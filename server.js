@@ -1189,9 +1189,11 @@ async function fetchStripeShopProducts() {
 
 // ---- Duels v3 : kits dynamiques, ELO par kit, profils et leaderboard ----
 app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
+  const sourceMode = String(req.body?.source_mode || 'LEGACY').trim().toUpperCase();
+  const authoritative = sourceMode === 'BACKEND';
   const kits = Array.isArray(req.body?.kits) ? req.body.kits.slice(0, 250) : [];
   const players = Array.isArray(req.body?.players) ? req.body.players.slice(0, 10000) : [];
-  const incomingTiers = normalizeDuelTierThresholds(req.body?.tiers);
+  const incomingTiers = authoritative ? normalizeDuelTierThresholds(req.body?.tiers) : null;
   if (!kits.length) return res.status(400).json({ error: 'Aucun kit dans le snapshot.' });
   const client = await pool.connect();
   try {
@@ -1202,27 +1204,175 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
       const icon = String(row.icon || 'IRON_SWORD').replace(/[^A-Z0-9_]/g, '').slice(0, 64) || 'IRON_SWORD';
       const emoji = String(row.emoji || '⚔').slice(0, 12);
       await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,updated_at) VALUES($1,$2,$3,$4,$5,NOW())
-        ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, icon_material=EXCLUDED.icon_material, emoji=EXCLUDED.emoji, sort_order=EXCLUDED.sort_order, updated_at=NOW()`, [key,name,icon,emoji,Number(row.order || i)]);
+        ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, icon_material=EXCLUDED.icon_material, emoji=EXCLUDED.emoji, updated_at=NOW()`, [key,name,icon,emoji,Number(row.order ?? i)]);
     }
-    for (const player of players) {
-      const uuid = normalizeUuid(player?.uuid); if (!uuid) continue;
-      const username = String(player?.username || uuid).slice(0, 32);
-      const selected = normalizeKitKey(player?.selected_kit);
-      if (selected) await client.query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW())
-        ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, selected_kit=EXCLUDED.selected_kit, updated_at=NOW()`, [uuid,username,selected]);
-      const statRows = Array.isArray(player?.kits) ? player.kits : [];
-      for (const st of statRows.slice(0,250)) {
-        const kit = normalizeKitKey(st?.kit); if (!kit) continue;
-        await client.query(`INSERT INTO duel_player_stats(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak,updated_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON CONFLICT(minecraft_uuid,kit_key) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, elo=EXCLUDED.elo, wins=EXCLUDED.wins, losses=EXCLUDED.losses, kills=EXCLUDED.kills, deaths=EXCLUDED.deaths, streak=EXCLUDED.streak, best_streak=EXCLUDED.best_streak, updated_at=NOW()`,
-          [uuid,username,kit,Number(st.elo||300),Number(st.wins||0),Number(st.losses||0),Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
+
+    // Seul PVPpractice (BACKEND) a le droit d'ecraser les ELO/stats.
+    // Le Lobby peut publier les nouveaux kits sans risquer d'envoyer des stats de miroir en retard.
+    if (authoritative) {
+      for (const player of players) {
+        const uuid = normalizeUuid(player?.uuid); if (!uuid) continue;
+        const username = String(player?.username || uuid).slice(0, 32);
+        const selected = normalizeKitKey(player?.selected_kit);
+        if (selected) await client.query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW())
+          ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, selected_kit=EXCLUDED.selected_kit, updated_at=NOW()`, [uuid,username,selected]);
+        const statRows = Array.isArray(player?.kits) ? player.kits : [];
+        for (const st of statRows.slice(0,250)) {
+          const kit = normalizeKitKey(st?.kit); if (!kit) continue;
+          await client.query(`INSERT INTO duel_player_stats(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak,updated_at)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON CONFLICT(minecraft_uuid,kit_key) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, elo=EXCLUDED.elo, wins=EXCLUDED.wins, losses=EXCLUDED.losses, kills=EXCLUDED.kills, deaths=EXCLUDED.deaths, streak=EXCLUDED.streak, best_streak=EXCLUDED.best_streak, updated_at=NOW()`,
+            [uuid,username,kit,Number(st.elo||300),Number(st.wins||0),Number(st.losses||0),Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
+        }
       }
     }
     await client.query('COMMIT');
     if (incomingTiers) duelTierThresholds = incomingTiers;
-    res.json({ ok: true, kits: kits.length, players: players.length, tiers: duelTierThresholds });
+    res.json({ ok: true, source_mode: sourceMode, authoritative, kits: kits.length, players: authoritative ? players.length : 0, tiers: duelTierThresholds });
   } catch (error) { await client.query('ROLLBACK'); console.error('[duels snapshot]', error); res.status(500).json({ error: 'Synchronisation duels impossible.' }); }
   finally { client.release(); }
+});
+
+
+function propertiesEscape(value) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\r/g, '')
+    .replace(/\n/g, '\\n');
+}
+
+async function applyDuelKitOrder(requestedOrder) {
+  const requested = Array.isArray(requestedOrder)
+    ? [...new Set(requestedOrder.map(normalizeKitKey).filter(Boolean))].slice(0, 250)
+    : [];
+  if (!requested.length) throw new Error('Ordre des kits vide.');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const current = await client.query('SELECT kit_key FROM duel_kits ORDER BY sort_order, display_name');
+    const existing = current.rows.map((row) => row.kit_key);
+    const finalOrder = requested.filter((key) => existing.includes(key));
+    for (const key of existing) if (!finalOrder.includes(key)) finalOrder.push(key);
+    if (!finalOrder.length) throw new Error('Aucun kit valide dans cet ordre.');
+    for (let i = 0; i < finalOrder.length; i += 1) {
+      await client.query('UPDATE duel_kits SET sort_order=$2, updated_at=NOW() WHERE kit_key=$1', [finalOrder[i], i]);
+    }
+    await client.query('COMMIT');
+    return finalOrder;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Relay fiable du fichier kits.yml : Lobby -> site -> PVPpractice.
+app.post('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSyncLimiter, express.text({ type: 'text/plain', limit: '2mb' }), async (req, res) => {
+  try {
+    const content = typeof req.body === 'string' ? req.body : '';
+    if (!content.trim() || !/(^|\n)\s*kits\s*:/m.test(content)) return res.status(400).json({ error: 'kits.yml invalide.' });
+    const sha256 = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+    const announced = String(req.get('X-Trizone-Hash') || '').trim().toLowerCase();
+    if (announced && announced !== sha256) return res.status(400).json({ error: 'Hash kits.yml invalide.' });
+    const source = String(req.get('X-Trizone-Source') || 'Lobby').slice(0, 80);
+    await query(`INSERT INTO duel_sync_files(file_key,content,sha256,source_server,updated_at)
+      VALUES('kits.yml',$1,$2,$3,NOW())
+      ON CONFLICT(file_key) DO UPDATE SET content=EXCLUDED.content,sha256=EXCLUDED.sha256,source_server=EXCLUDED.source_server,updated_at=NOW()`,
+      [content, sha256, source]);
+    res.json({ ok: true, sha256, bytes: Buffer.byteLength(content, 'utf8') });
+  } catch (error) {
+    console.error('[duels kits-file POST]', error);
+    res.status(500).json({ error: 'Impossible de sauvegarder kits.yml.' });
+  }
+});
+
+app.get('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSyncLimiter, async (_req, res) => {
+  try {
+    const result = await query(`SELECT content,sha256,source_server,updated_at FROM duel_sync_files WHERE file_key='kits.yml' LIMIT 1`);
+    if (!result.rowCount) return res.status(404).send('Aucun kits.yml synchronise.');
+    const row = result.rows[0];
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.set('X-Trizone-Hash', row.sha256);
+    res.set('X-Trizone-Source', row.source_server || 'Lobby');
+    res.send(row.content);
+  } catch (error) {
+    console.error('[duels kits-file GET]', error);
+    res.status(500).send('Erreur kits.yml.');
+  }
+});
+
+// Snapshot texte leger lu par le meme JAR sur Lobby, PVPpractice et les autres serveurs Paper.
+app.get('/api/minecraft/duels/network-snapshot.properties', requireMinecraftSecret, minecraftSyncLimiter, async (_req, res) => {
+  try {
+    const [kitsResult, identitiesResult, settingsResult, statsResult] = await Promise.all([
+      query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits ORDER BY sort_order,display_name`),
+      query(`SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username FROM (
+        SELECT minecraft_uuid,minecraft_username FROM minecraft_accounts
+        UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_stats
+        UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_settings WHERE minecraft_username IS NOT NULL
+      ) x GROUP BY minecraft_uuid ORDER BY MAX(minecraft_username)`),
+      query(`SELECT minecraft_uuid,minecraft_username,selected_kit FROM duel_player_settings`),
+      query(`SELECT minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak FROM duel_player_stats`)
+    ]);
+
+    const lines = ['# Trizone Duels network snapshot v3.1'];
+    for (const tier of DUEL_TIER_ORDER) lines.push(`tier.threshold.${tier}=${Number(duelTierThresholds[tier] ?? DUEL_TIER_DEFAULTS[tier])}`);
+    for (const kit of kitsResult.rows) {
+      const key = normalizeKitKey(kit.kit_key); if (!key) continue;
+      lines.push(`kit.${key}.name=${propertiesEscape(kit.display_name)}`);
+      lines.push(`kit.${key}.icon=${propertiesEscape(kit.icon_material || 'IRON_SWORD')}`);
+      lines.push(`kit.${key}.emoji=${propertiesEscape(kit.emoji || '⚔')}`);
+      lines.push(`kit.${key}.order=${Number(kit.sort_order || 0)}`);
+    }
+
+    const names = new Map();
+    for (const row of identitiesResult.rows) {
+      const uuid = normalizeUuid(row.minecraft_uuid); if (!uuid) continue;
+      const username = String(row.minecraft_username || uuid).slice(0, 32);
+      names.set(uuid, username);
+      lines.push(`player.${uuid}.name=${propertiesEscape(username)}`);
+    }
+    for (const row of settingsResult.rows) {
+      const uuid = normalizeUuid(row.minecraft_uuid); if (!uuid) continue;
+      const username = String(row.minecraft_username || names.get(uuid) || uuid).slice(0,32);
+      if (!names.has(uuid)) lines.push(`player.${uuid}.name=${propertiesEscape(username)}`);
+      const selected = normalizeKitKey(row.selected_kit);
+      if (selected) lines.push(`player.${uuid}.selected=${selected}`);
+    }
+    for (const row of statsResult.rows) {
+      const uuid = normalizeUuid(row.minecraft_uuid); const kit = normalizeKitKey(row.kit_key);
+      if (!uuid || !kit) continue;
+      const username = String(row.minecraft_username || names.get(uuid) || uuid).slice(0,32);
+      if (!names.has(uuid)) {
+        names.set(uuid, username);
+        lines.push(`player.${uuid}.name=${propertiesEscape(username)}`);
+      }
+      const base = `rating.${uuid}.${kit}.`;
+      lines.push(`${base}elo=${Number(row.elo || 300)}`);
+      lines.push(`${base}wins=${Number(row.wins || 0)}`);
+      lines.push(`${base}losses=${Number(row.losses || 0)}`);
+      lines.push(`${base}kills=${Number(row.kills || 0)}`);
+      lines.push(`${base}deaths=${Number(row.deaths || 0)}`);
+      lines.push(`${base}streak=${Number(row.streak || 0)}`);
+      lines.push(`${base}best-streak=${Number(row.best_streak || 0)}`);
+    }
+
+    res.set('Content-Type', 'text/plain; charset=utf-8');
+    res.send(`${lines.join('\n')}\n`);
+  } catch (error) {
+    console.error('[duels network snapshot]', error);
+    res.status(500).send('Impossible de charger le snapshot reseau.');
+  }
+});
+
+app.post('/api/minecraft/duels/kits/order', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
+  try {
+    const order = await applyDuelKitOrder(req.body?.order);
+    res.json({ ok: true, order });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Ordre invalide.' });
+  }
 });
 
 app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
@@ -1445,6 +1595,29 @@ app.get('/api/account/purchases', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[purchases]', error);
     res.status(500).json({ error: 'Impossible de charger l’historique.' });
+  }
+});
+
+
+app.get('/api/admin/duels/kits/order', requireAdmin, async (_req, res) => {
+  try {
+    const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
+      FROM duel_kits ORDER BY sort_order,display_name`);
+    res.json({ kits: result.rows });
+  } catch (error) {
+    console.error('[admin duel kit order GET]', error);
+    res.status(500).json({ error: 'Impossible de charger l ordre des kits.' });
+  }
+});
+
+app.put('/api/admin/duels/kits/order', requireAdmin, sensitiveLimiter, async (req, res) => {
+  try {
+    const order = await applyDuelKitOrder(req.body?.order);
+    const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
+      FROM duel_kits ORDER BY sort_order,display_name`);
+    res.json({ ok: true, order, kits: result.rows });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Ordre invalide.' });
   }
 });
 

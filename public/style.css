@@ -721,3 +721,23 @@ td small { color: var(--muted); margin-top: 3px; }
 .mc-slot:not(.empty):hover .mc-item-tooltip,.mc-slot:not(.empty):focus .mc-item-tooltip { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
 .mc-slot small { color:#d5c8dd; opacity:.78; }
 @media (max-width:720px) { .mc-item-tooltip { min-width:150px; max-width:220px; font-size:.67rem; } }
+
+
+/* v3.1.0 — ordre des kits Duels dans le panel admin */
+.kit-order-list { display:grid; gap:8px; margin-top:4px; }
+.kit-order-row {
+  display:grid; grid-template-columns:44px 42px minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:9px 10px; border:1px solid #35283f; border-radius:11px;
+  background:linear-gradient(90deg,rgba(140,60,255,.08),rgba(16,13,20,.95) 34%);
+}
+.kit-order-index { color:#9d8ca9; font-weight:900; text-align:center; font-size:.8rem; }
+.kit-order-icon { width:36px; height:36px; display:grid; place-items:center; border-radius:8px; border:1px solid #503666; background:#130e19; font-size:1.05rem; }
+.kit-order-info { min-width:0; display:grid; gap:2px; }
+.kit-order-info strong { color:#f8f2fb; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kit-order-info small { color:#82778a; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.kit-order-actions { display:flex; gap:5px; align-items:center; }
+.compact-empty { min-height:90px; }
+@media (max-width:680px) {
+  .kit-order-row { grid-template-columns:36px 36px minmax(0,1fr); }
+  .kit-order-actions { grid-column:1/-1; justify-content:flex-end; }
+}

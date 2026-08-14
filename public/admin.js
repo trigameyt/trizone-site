@@ -28,6 +28,7 @@ const legalFields = [
 ];
 
 let allUsers = [];
+let duelKits = [];
 
 function fieldHtml([key, label, type, help]) {
   return `<label class="form-field">
@@ -122,11 +123,81 @@ function filterUsers() {
     .some((value) => String(value || '').toLowerCase().includes(q))));
 }
 
+
+function renderDuelKitOrder() {
+  const root = document.getElementById('duel-kit-order-list');
+  if (!root) return;
+  if (!duelKits.length) {
+    root.innerHTML = '<div class="empty-state compact-empty"><p>Aucun kit synchronisé.</p></div>';
+    return;
+  }
+  root.innerHTML = duelKits.map((kit, index) => `
+    <div class="kit-order-row" data-kit-key="${Trizone.escapeHtml(kit.key)}">
+      <span class="kit-order-index">#${index + 1}</span>
+      <span class="kit-order-icon">${Trizone.escapeHtml(kit.emoji || '⚔')}</span>
+      <div class="kit-order-info">
+        <strong>${Trizone.escapeHtml(kit.name || kit.key)}</strong>
+        <small>${Trizone.escapeHtml(kit.key)}</small>
+      </div>
+      <div class="kit-order-actions">
+        <button class="btn btn-quiet btn-tiny" type="button" data-kit-order-action="first" aria-label="Mettre en premier">⇤</button>
+        <button class="btn btn-quiet btn-tiny" type="button" data-kit-order-action="up" aria-label="Monter">←</button>
+        <button class="btn btn-quiet btn-tiny" type="button" data-kit-order-action="down" aria-label="Descendre">→</button>
+        <button class="btn btn-quiet btn-tiny" type="button" data-kit-order-action="last" aria-label="Mettre en dernier">⇥</button>
+      </div>
+    </div>`).join('');
+}
+
+function moveDuelKit(key, action) {
+  const index = duelKits.findIndex((kit) => kit.key === key);
+  if (index < 0) return;
+  const [kit] = duelKits.splice(index, 1);
+  let target = index;
+  if (action === 'first') target = 0;
+  if (action === 'last') target = duelKits.length;
+  if (action === 'up') target = Math.max(0, index - 1);
+  if (action === 'down') target = Math.min(duelKits.length, index + 1);
+  duelKits.splice(target, 0, kit);
+  renderDuelKitOrder();
+}
+
+function handleDuelKitOrderClick(event) {
+  const button = event.target.closest('[data-kit-order-action]');
+  if (!button) return;
+  const row = button.closest('[data-kit-key]');
+  if (!row) return;
+  moveDuelKit(row.dataset.kitKey, button.dataset.kitOrderAction);
+}
+
+async function saveDuelKitOrder() {
+  const button = document.getElementById('save-duel-kit-order');
+  const status = document.getElementById('duel-kit-order-status');
+  if (!button) return;
+  button.disabled = true;
+  if (status) status.textContent = 'Synchronisation…';
+  try {
+    const result = await Trizone.json('/api/admin/duels/kits/order', {
+      method: 'PUT',
+      body: JSON.stringify({ order: duelKits.map((kit) => kit.key) }),
+    });
+    duelKits = result.kits || duelKits;
+    renderDuelKitOrder();
+    if (status) status.textContent = 'Ordre sauvegardé. /kit le récupère automatiquement.';
+    Trizone.showToast('Ordre des kits mis à jour.');
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    Trizone.showToast(error.message, 'bad');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadAdminData(config) {
-  const [stats, users, events] = await Promise.all([
+  const [stats, users, events, kitOrder] = await Promise.all([
     Trizone.json('/api/admin/stats'),
     Trizone.json('/api/admin/users'),
     Trizone.json('/api/admin/events'),
+    Trizone.json('/api/admin/duels/kits/order'),
   ]);
 
   document.getElementById('stats').innerHTML = `
@@ -138,6 +209,8 @@ async function loadAdminData(config) {
   document.querySelectorAll('[data-setting]').forEach((input) => { input.value = config[input.dataset.setting] ?? ''; });
   allUsers = users.data || [];
   renderUserRows(allUsers);
+  duelKits = kitOrder.kits || [];
+  renderDuelKitOrder();
 
   const eventsRoot = document.getElementById('events-list');
   eventsRoot.innerHTML = events.data?.length
@@ -172,6 +245,12 @@ async function initAdmin() {
       </section>
 
       <section class="panel">
+        <div class="panel-head"><div><h3>Ordre des kits Duels</h3><p>Le même ordre est utilisé dans le menu <strong>/kit</strong> et dans les onglets du leaderboard.</p></div><span class="badge">Synchro réseau</span></div>
+        <div id="duel-kit-order-list" class="kit-order-list"><p class="muted">Chargement…</p></div>
+        <div class="save-bar"><button class="btn btn-primary" id="save-duel-kit-order" type="button">Sauvegarder l'ordre</button><span id="duel-kit-order-status" class="muted"></span></div>
+      </section>
+
+      <section class="panel">
         <div class="panel-head"><div><h3>Joueurs</h3><p>Grade affiché sur le site, bannissement et liaison Minecraft.</p></div><input class="search-input" id="user-search" type="search" placeholder="Pseudo, Discord ID, grade…"></div>
         <div class="table-wrap"><table><thead><tr><th>Discord</th><th>ID</th><th>Minecraft</th><th>Grade</th><th>État</th><th>Actions</th></tr></thead><tbody id="users-body"></tbody></table></div>
       </section>
@@ -183,6 +262,8 @@ async function initAdmin() {
     </div>`;
 
   document.getElementById('save-site').addEventListener('click', saveSiteSettings);
+  document.getElementById('save-duel-kit-order').addEventListener('click', saveDuelKitOrder);
+  document.getElementById('duel-kit-order-list').addEventListener('click', handleDuelKitOrderClick);
   document.getElementById('user-search').addEventListener('input', filterUsers);
   document.getElementById('users-body').addEventListener('click', handleUserAction);
 

@@ -8,6 +8,7 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -68,7 +69,7 @@ public final class TrizoneWebLink extends JavaPlugin implements Listener {
             for (Player online : getServer().getOnlinePlayers()) syncGameData(online, false);
         }, 100L, gameSyncSeconds * 20L);
 
-        getLogger().info("TrizoneWebLink v1.3.0 actif. Liaison + Stripe + inventaire/Ender Chest du Lobby.");
+        getLogger().info("TrizoneWebLink v1.3.2 actif. Inventaire/Ender Chest limite au monde '" + survivalWorld() + "'.");
     }
 
     @Override
@@ -138,12 +139,28 @@ public final class TrizoneWebLink extends JavaPlugin implements Listener {
     }
 
     @EventHandler
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        // Dès que le joueur entre dans le monde Survie, on laisse les plugins d'inventaire
+        // appliquer le bon contenu puis on envoie le snapshot au site.
+        if (isSurvivalWorld(player)) {
+            getServer().getScheduler().runTaskLater(this, () -> {
+                if (player.isOnline() && isSurvivalWorld(player)) syncGameData(player, false);
+            }, 20L);
+        }
+    }
+
+    @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        // PlayerQuitEvent est encore exécuté sur le thread serveur : on capture l'inventaire avant la déconnexion.
-        syncGameData(event.getPlayer(), false);
+        // Ne jamais écraser la sauvegarde Survie avec l'inventaire d'un autre monde.
+        if (isSurvivalWorld(event.getPlayer())) syncGameData(event.getPlayer(), false);
     }
 
     private void syncGameData(Player player, boolean tellPlayer) {
+        if (!isSurvivalWorld(player)) {
+            if (tellPlayer) player.sendMessage(color("&8[&5Trizone&8] &eL'inventaire du site vient uniquement du monde &f" + survivalWorld() + "&e. Va dans ce monde puis refais &f/link sync&e."));
+            return;
+        }
         String apiUrl = getConfig().getString("game-sync-url", "https://trizone.club/api/minecraft/game-sync");
         String secret = getConfig().getString("secret", "");
         if (!configured(apiUrl, secret)) {
@@ -160,6 +177,7 @@ public final class TrizoneWebLink extends JavaPlugin implements Listener {
                     "\"uuid\":\"" + player.getUniqueId() + "\"," +
                     "\"username\":\"" + escapeJson(player.getName()) + "\"," +
                     "\"source_server\":\"" + escapeJson(sourceServer == null ? "Lobby" : sourceServer) + "\"," +
+                    "\"source_world\":\"" + escapeJson(player.getWorld().getName()) + "\"," +
                     "\"inventory\":" + itemsJson(inventory.getStorageContents()) + "," +
                     "\"armor\":" + itemsJson(inventory.getArmorContents()) + "," +
                     "\"offhand\":" + itemJson(inventory.getItemInOffHand(), -1) + "," +
@@ -199,6 +217,15 @@ public final class TrizoneWebLink extends JavaPlugin implements Listener {
                 if (player.isOnline()) player.sendMessage(color("&8[&5Trizone&8] &aInventaire et Ender Chest synchronisés."));
             });
         });
+    }
+
+    private String survivalWorld() {
+        String world = getConfig().getString("survival-world", "world");
+        return world == null || world.isBlank() ? "world" : world.trim();
+    }
+
+    private boolean isSurvivalWorld(Player player) {
+        return player != null && player.getWorld() != null && player.getWorld().getName().equalsIgnoreCase(survivalWorld());
     }
 
     private String inventoryJson(Inventory inventory) {
