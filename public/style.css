@@ -577,3 +577,73 @@ td small { color: var(--muted); margin-top: 3px; }
   .uptime-history { grid-template-columns: repeat(60, minmax(1px, 1fr)); gap: 2px; }
   .uptime-bar { height: 14px; border-radius: 2px; }
 }
+
+/* ===== v3.0 : Duels + inventaire ===== */
+.duel-panel { overflow: hidden; }
+.duel-overall { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin-bottom:12px; }
+.duel-overall > div { background:#0d0b10; border:1px solid var(--line-soft); border-radius:9px; padding:11px 12px; display:grid; gap:4px; }
+.duel-overall span { color:var(--muted); font-size:.72rem; }
+.duel-overall strong { font-size:1rem; }
+.duel-overall em { font-style:normal; margin-left:4px; }
+.duel-selected-preview { border:1px solid #473058; background:#100b14; border-radius:9px; padding:10px 12px; margin-bottom:10px; color:#cfc4d8; }
+.duel-kit-list { display:grid; gap:8px; }
+.duel-kit-card { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:11px; padding:10px; border:1px solid var(--line-soft); border-radius:10px; background:#0e0c11; }
+.duel-kit-card.selected { border-color:#6c4188; background:#130e18; }
+.duel-kit-icon { width:44px; height:44px; border-radius:9px; display:grid; place-items:center; background:#1a1420; border:1px solid #392c43; font-size:1.35rem; }
+.duel-kit-title { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.selected-label { font-size:.62rem; text-transform:uppercase; letter-spacing:.06em; color:#dcb8f3; border:1px solid #65447a; border-radius:999px; padding:3px 6px; }
+.elo-line { margin-top:4px; display:flex; gap:8px; align-items:center; color:#b8adbf; font-size:.8rem; }
+.duel-mini-stats { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; color:#77707f; font-size:.72rem; }
+.duel-mini-stats b { color:#cfc6d6; }
+.duel-tier { font-weight:900; font-size:.72rem; letter-spacing:.02em; }
+.tier-lt5 { color:#aeb8c3 !important; } .tier-ht5 { color:#d79f5e !important; }
+.tier-lt4 { color:#d38162 !important; } .tier-ht4 { color:#e2b95b !important; }
+.tier-lt3 { color:#e06d8c !important; } .tier-ht3 { color:#d08af4 !important; }
+.tier-lt2 { color:#778ef7 !important; } .tier-ht2 { color:#61c9f4 !important; }
+.tier-lt1 { color:#62d9b1 !important; } .tier-ht1 { color:#ffd45f !important; text-shadow:0 0 12px rgba(255,212,95,.18); }
+
+.inventory-meta { display:flex; flex-wrap:wrap; gap:8px 18px; color:var(--muted); font-size:.78rem; margin-bottom:14px; }
+.inventory-section { margin-top:14px; }
+.inventory-section h4 { margin:0 0 7px; font-size:.8rem; color:#d4cadb; }
+.mc-grid { display:grid; grid-template-columns:repeat(var(--mc-cols),minmax(42px,1fr)); gap:4px; max-width:650px; }
+.mc-slot { min-width:0; aspect-ratio:1/1; position:relative; display:grid; place-items:center; border:1px solid #322c37; border-radius:6px; background:linear-gradient(145deg,#17141b,#0b090d); box-shadow:inset 0 1px 0 rgba(255,255,255,.025); overflow:hidden; }
+.mc-slot.empty { opacity:.5; }
+.mc-item-symbol { font-size:1.25rem; line-height:1; }
+.mc-slot small { position:absolute; left:3px; right:3px; bottom:2px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:.49rem; color:#817987; text-align:center; }
+.mc-count { position:absolute; right:4px; bottom:11px; color:#fff; font-size:.68rem; text-shadow:0 1px 2px #000; }
+.inventory-side-row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+.inventory-side-row .mc-grid { min-width:180px; }
+
+.leaderboard-shell { border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#0d0b10; }
+.leaderboard-tabs { display:flex; align-items:stretch; overflow-x:auto; background:#111016; border-bottom:1px solid var(--line); scrollbar-width:thin; }
+.lb-tab { min-width:88px; border:0; border-right:1px solid var(--line-soft); border-bottom:2px solid transparent; background:transparent; color:#7d7584; padding:11px 12px; display:grid; place-items:center; gap:4px; cursor:pointer; }
+.lb-tab span { font-size:1.15rem; } .lb-tab b { font-size:.68rem; }
+.lb-tab.active { color:#f1ebf4; border-bottom-color:#c9c5cc; background:#15121a; }
+.leaderboard-toolbar { padding:12px 16px; display:flex; justify-content:space-between; gap:14px; align-items:center; border-bottom:1px solid var(--line-soft); }
+.leaderboard-toolbar > div { display:grid; gap:2px; } .leaderboard-toolbar small { color:var(--muted); }
+.leaderboard-toolbar .search-input { max-width:280px; }
+.leaderboard-list { padding:8px 10px 12px; display:grid; gap:5px; min-height:240px; }
+.leaderboard-row { display:grid; grid-template-columns:50px 46px minmax(190px,1fr) minmax(220px,auto); gap:10px; align-items:center; min-height:58px; padding:6px 10px; border:1px solid #201c24; border-radius:8px; background:#121018; }
+.leaderboard-row:nth-child(1) { background:#171420; border-color:#4e3e26; }
+.leaderboard-row:nth-child(2) { border-color:#3c4348; }
+.leaderboard-row:nth-child(3) { border-color:#4a3228; }
+.lb-position { font-weight:950; font-size:1rem; color:#d9d4dd; text-align:center; }
+.lb-avatar { width:38px; height:38px; display:grid; place-items:center; border-radius:5px; background:linear-gradient(145deg,#5a4b68,#201b26); border:1px solid #42394b; font-size:.7rem; font-weight:950; }
+.lb-player { min-width:0; display:grid; gap:3px; }
+.lb-player strong { font-size:.93rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lb-player span { color:#6f6875; font-size:.72rem; } .lb-player em { font-style:normal; font-weight:900; }
+.lb-badges { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:5px; }
+.lb-kit-badge { width:35px; min-height:38px; border:1px solid #302a35; border-radius:8px; background:#0d0b10; display:grid; place-items:center; padding:3px; }
+.lb-kit-badge i { font-style:normal; font-size:.82rem; line-height:1; } .lb-kit-badge b { font-size:.58rem; line-height:1; }
+
+@media (max-width: 760px) {
+  .duel-overall { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .duel-kit-card { grid-template-columns:38px minmax(0,1fr); }
+  .duel-kit-card > .btn { grid-column:1/-1; }
+  .mc-grid { grid-template-columns:repeat(var(--mc-cols),minmax(28px,1fr)); gap:2px; }
+  .mc-slot small { display:none; }
+  .leaderboard-toolbar { align-items:stretch; flex-direction:column; }
+  .leaderboard-toolbar .search-input { max-width:none; }
+  .leaderboard-row { grid-template-columns:42px 38px minmax(0,1fr); }
+  .lb-badges { grid-column:2/-1; justify-content:flex-start; }
+}

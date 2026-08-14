@@ -1,6 +1,11 @@
 api-url: "https://trizone.club/api/minecraft/link/confirm"
 sync-url: "https://trizone.club/api/minecraft/profile-sync"
 
+# Inventaire Survie + Ender Chest affichés dans la section Compte du site.
+game-sync-url: "https://trizone.club/api/minecraft/game-sync"
+source-server: "Lobby"
+inventory-sync-interval-seconds: 60
+
 # Livraison automatique des grades achetés via Stripe Managed Payments.
 # Installe ce plugin sur UN seul serveur Paper qui a accès à la même base LuckPerms que le réseau (Lobby conseillé).
 delivery-url: "https://trizone.club/api/minecraft/deliveries?format=lines"

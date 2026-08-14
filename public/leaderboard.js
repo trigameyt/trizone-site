@@ -1,0 +1,43 @@
+let leaderboardEntries = [];
+let activeKit = 'overall';
+let kitCatalog = [];
+
+function tierClass(tier) { return `tier-${String(tier || 'LT5').toLowerCase()}`; }
+function renderBadges(kits) {
+  return (kits || []).slice(0, 9).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}"><i>${Trizone.escapeHtml(k.emoji || '⚔')}</i><b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
+}
+function row(entry) {
+  const medal = entry.position === 1 ? '🥇' : entry.position === 2 ? '🥈' : entry.position === 3 ? '🥉' : `${entry.position}.`;
+  return `<article class="leaderboard-row" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}">
+    <div class="lb-position">${medal}</div>
+    <div class="lb-avatar">${Trizone.escapeHtml(String(entry.username || '?').slice(0, 2).toUpperCase())}</div>
+    <div class="lb-player"><strong>${Trizone.escapeHtml(entry.username)}</strong><span><em class="${tierClass(entry.tier)}">${Trizone.escapeHtml(entry.tier)}</em> ${entry.elo} ELO · ${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></div>
+    <div class="lb-badges">${renderBadges(entry.kits)}</div>
+  </article>`;
+}
+function applySearch() {
+  const q = String(document.getElementById('leaderboard-search')?.value || '').trim().toLowerCase();
+  const filtered = q ? leaderboardEntries.filter((e) => String(e.username).toLowerCase().includes(q)) : leaderboardEntries;
+  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : '<div class="empty-state"><h2>Aucun joueur</h2><p>Aucun résultat pour cette recherche.</p></div>';
+}
+async function loadLeaderboard(kit) {
+  activeKit = kit;
+  document.querySelectorAll('[data-lb-kit]').forEach((b) => b.classList.toggle('active', b.dataset.lbKit === kit));
+  const root = document.getElementById('leaderboard-root'); root.innerHTML = '<div class="skeleton"></div>';
+  const info = kit === 'overall' ? { name: 'Overall', emoji: '🏆' } : kitCatalog.find((k) => k.key === kit) || { name: kit, emoji: '⚔' };
+  document.getElementById('leaderboard-title').textContent = `${info.emoji || '⚔'} ${info.name}`;
+  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement par ELO moyen des kits joués' : 'Classement par ELO de ce kit';
+  try { const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`); leaderboardEntries = data.entries || []; applySearch(); }
+  catch (error) { root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
+}
+async function bootLeaderboard() {
+  trizoneHeader('leaderboard'); trizoneFooter(); await Trizone.boot();
+  try {
+    const data = await Trizone.json('/api/duels/kits'); kitCatalog = data.kits || [];
+    document.getElementById('leaderboard-tabs').innerHTML = `<button class="lb-tab active" data-lb-kit="overall"><span>🏆</span><b>Overall</b></button>${kitCatalog.map((k) => `<button class="lb-tab" data-lb-kit="${Trizone.escapeHtml(k.key)}"><span>${Trizone.escapeHtml(k.emoji || '⚔')}</span><b>${Trizone.escapeHtml(k.name)}</b></button>`).join('')}`;
+    document.querySelectorAll('[data-lb-kit]').forEach((button) => button.addEventListener('click', () => loadLeaderboard(button.dataset.lbKit)));
+    await loadLeaderboard('overall');
+  } catch (error) { document.getElementById('leaderboard-root').innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
+  document.getElementById('leaderboard-search').addEventListener('input', applySearch);
+}
+document.addEventListener('DOMContentLoaded', bootLeaderboard);

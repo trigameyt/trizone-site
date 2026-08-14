@@ -13,6 +13,7 @@ function trizoneHeader(active = '') {
           <a class="${active === 'home' ? 'active' : ''}" href="/">Accueil</a>
           <a href="/#status">État</a>
           <a class="${active === 'shop' ? 'active' : ''}" href="/shop.html">Boutique</a>
+          <a class="${active === 'leaderboard' ? 'active' : ''}" href="/leaderboard.html">Leaderboard</a>
           <a class="${active === 'account' ? 'active' : ''}" href="/account.html">Compte</a>
           <a class="${active === 'admin' ? 'active' : ''}" href="/admin.html" data-auth="admin" hidden>Admin</a>
           <a class="${active === 'legal' ? 'active' : ''}" href="/legal.html">Infos</a>
