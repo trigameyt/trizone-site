@@ -96,7 +96,7 @@ const Trizone = (() => {
   async function copyText(value) {
     if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
     const temp = document.createElement('textarea');
-    temp.value = value; temp.style.position = 'fixed'; temp.style.opacity = '0';
+    temp.value = value; temp.className = 'clipboard-proxy';
     document.body.appendChild(temp); temp.select(); document.execCommand('copy'); temp.remove();
   }
 

@@ -55,13 +55,28 @@ function prettyMaterial(type) {
   return String(type || 'AIR').toLowerCase().split('_').map((x) => x ? x[0].toUpperCase() + x.slice(1) : '').join(' ');
 }
 
-function renderItem(item, slot) {
-  if (!item || !item.type || item.type === 'AIR') return `<div class="mc-slot empty" title="Slot ${slot + 1}"></div>`;
+function itemColorClass(type) {
+  const t = String(type || '').toUpperCase();
+  if (t.includes('NETHERITE')) return 'mc-netherite';
+  if (t.includes('DIAMOND')) return 'mc-diamond';
+  if (t.includes('EMERALD')) return 'mc-emerald';
+  if (t.includes('GOLD')) return 'mc-gold';
+  if (t.includes('IRON')) return 'mc-iron';
+  if (t.includes('REDSTONE')) return 'mc-redstone';
+  if (t.includes('LAPIS')) return 'mc-lapis';
+  if (t.includes('AMETHYST')) return 'mc-amethyst';
+  if (t.includes('POTION')) return 'mc-potion';
+  if (t.includes('ENCHANT')) return 'mc-enchant';
+  return 'mc-default';
+}
+
+function renderItem(item, slot, hotbar = false) {
+  if (!item || !item.type || item.type === 'AIR') return `<div class="mc-slot empty ${hotbar ? 'hotbar-slot' : ''}" title="Slot ${slot + 1}"><span class="mc-slot-number">${slot + 1}</span></div>`;
   const title = item.name || prettyMaterial(item.type);
   const enchants = item.enchants && Object.keys(item.enchants).length
     ? `\n${Object.entries(item.enchants).map(([k, v]) => `${prettyMaterial(k)} ${v}`).join(', ')}` : '';
   const lore = Array.isArray(item.lore) && item.lore.length ? `\n${item.lore.join(' • ')}` : '';
-  return `<div class="mc-slot" title="${Trizone.escapeHtml(`${title}${enchants}${lore}`)}">
+  return `<div class="mc-slot ${itemColorClass(item.type)} ${hotbar ? 'hotbar-slot' : ''}" title="${Trizone.escapeHtml(`${title}${enchants}${lore}`)}">
     <span class="mc-item-symbol">${itemSymbol(item.type)}</span>
     ${Number(item.amount || 1) > 1 ? `<b class="mc-count">${Number(item.amount)}</b>` : ''}
     <small>${Trizone.escapeHtml(title)}</small>
@@ -70,8 +85,8 @@ function renderItem(item, slot) {
 
 function inventoryGrid(items, size, columns = 9) {
   const bySlot = new Map((Array.isArray(items) ? items : []).map((item) => [Number(item.slot), item]));
-  let html = `<div class="mc-grid" style="--mc-cols:${columns}">`;
-  for (let i = 0; i < size; i += 1) html += renderItem(bySlot.get(i), i);
+  let html = `<div class="mc-grid mc-grid-${columns}">`;
+  for (let i = 0; i < size; i += 1) html += renderItem(bySlot.get(i), i, size === 36 && i >= 27);
   return `${html}</div>`;
 }
 
@@ -148,7 +163,7 @@ async function loadGameData() {
     const data = response.data;
     if (!data) { root.innerHTML = '<p class="muted">Aucune synchro d’inventaire reçue. Rejoins le Lobby puis utilise <code>/link sync</code>.</p>'; return; }
     root.innerHTML = `
-      <div class="inventory-meta"><span>Source : <b>${Trizone.escapeHtml(data.source_server || 'Lobby')}</b></span><span>Synchro : <b>${fmtDate(data.updated_at)}</b></span></div>
+      <div class="inventory-meta"><span class="inventory-source-pill">🟣 ${Trizone.escapeHtml(data.source_server || 'Lobby')}</span><span class="inventory-world-pill">🌍 monde <b>${Trizone.escapeHtml(data.source_world || 'world')}</b></span><span>Synchro : <b>${fmtDate(data.updated_at)}</b></span></div>
       <div class="inventory-section"><h4>Inventaire Survie</h4>${inventoryGrid(data.inventory, 36)}</div>
       <div class="inventory-side-row">
         <div class="inventory-section"><h4>Armure</h4>${inventoryGrid(data.armor, 4, 4)}</div>
@@ -191,7 +206,7 @@ async function loadAccount() {
           ${u.minecraft_username ? `<div class="details-grid"><div><span>Pseudo</span><strong>${Trizone.escapeHtml(u.minecraft_username)}</strong></div><div><span>Grade</span><strong class="rank-text ${rankClass}">${Trizone.escapeHtml(rank)}</strong></div><div><span>UUID</span><strong class="mono">${Trizone.escapeHtml(u.minecraft_uuid)}</strong></div><div><span>Dernière synchro</span><strong>${fmtDate(u.updated_at)}</strong></div></div><div class="inline-actions"><button class="btn btn-quiet" id="generate-code" type="button">Changer de compte lié</button></div><p class="hint">Utilise <code>/link sync</code> sur le Lobby pour synchroniser grade + inventaire + Ender Chest.</p>` : `<p class="muted">Aucun compte Minecraft n’est encore lié.</p><button class="btn btn-primary" id="generate-code" type="button">Générer un code de liaison</button>`}
           <div id="link-code-box"></div></section>
         <section class="panel duel-panel"><div class="panel-head"><div><h3>Statistiques de duel</h3><p>ELO séparé par kit, classement, wins / loses et KDR.</p></div><a class="btn btn-quiet btn-small" href="/leaderboard.html">Leaderboard</a></div><div id="duel-stats-root"><p class="muted">Chargement…</p></div></section>
-        <section class="panel"><div class="panel-head"><div><h3>Survie — inventaire & Ender Chest</h3><p>Lecture du contenu synchronisé depuis le serveur Lobby.</p></div></div><div id="game-data-root"><p class="muted">Chargement…</p></div></section>
+        <section class="panel inventory-panel"><div class="panel-head"><div><h3>Survie — inventaire & Ender Chest</h3><p>Uniquement l’inventaire du monde <b>world</b> sur le serveur Lobby.</p></div></div><div id="game-data-root"><p class="muted">Chargement…</p></div></section>
         <section class="panel"><div class="panel-head"><div><h3>Grade Discord</h3><p>Trizone-bot attribue automatiquement le rôle correspondant à ton grade payé via Stripe.</p></div></div><p class="hint">Le bot ne modifie que les rôles Copper, Iron, Gold, Diamond et Netherite configurés pour la boutique.</p><div class="inline-actions"><button class="btn btn-quiet" id="sync-discord-rank" type="button">Synchroniser mon rôle Discord</button><button class="btn btn-quiet" id="sync-minecraft-rank" type="button">Synchroniser mon grade Minecraft</button></div><div id="discord-rank-status"></div><div id="minecraft-rank-status"></div></section>
         <section class="panel"><div class="panel-head"><div><h3>Achats</h3><p>Historique des achats confirmés par les webhooks Stripe.</p></div><a class="btn btn-quiet btn-small" href="/shop.html">Boutique</a></div><div id="purchase-list"><p class="muted">Chargement…</p></div></section>
       </div>

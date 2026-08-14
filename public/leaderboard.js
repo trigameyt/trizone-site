@@ -3,22 +3,32 @@ let activeKit = 'overall';
 let kitCatalog = [];
 
 function tierClass(tier) { return `tier-${String(tier || 'LT5').toLowerCase()}`; }
+function avatarClass(name) {
+  let h = 0;
+  for (const ch of String(name || 'Trizone')) h = (h * 31 + ch.charCodeAt(0)) % 12;
+  return `avatar-c${h}`;
+}
 function renderBadges(kits) {
-  return (kits || []).slice(0, 9).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}"><i>${Trizone.escapeHtml(k.emoji || '⚔')}</i><b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
+  return (kits || []).slice(0, 12).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}"><i>${Trizone.escapeHtml(k.emoji || '⚔')}</i><b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
 }
 function row(entry) {
   const medal = entry.position === 1 ? '🥇' : entry.position === 2 ? '🥈' : entry.position === 3 ? '🥉' : `${entry.position}.`;
-  return `<article class="leaderboard-row" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}">
+  const placeClass = entry.position <= 3 ? `place-${entry.position}` : '';
+  const initials = String(entry.username || '?').slice(0, 2).toUpperCase();
+  return `<article class="leaderboard-row ${placeClass} rank-${tierClass(entry.tier)}" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}">
     <div class="lb-position">${medal}</div>
-    <div class="lb-avatar">${Trizone.escapeHtml(String(entry.username || '?').slice(0, 2).toUpperCase())}</div>
-    <div class="lb-player"><strong>${Trizone.escapeHtml(entry.username)}</strong><span><em class="${tierClass(entry.tier)}">${Trizone.escapeHtml(entry.tier)}</em> ${entry.elo} ELO · ${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></div>
+    <div class="lb-avatar ${avatarClass(entry.username)}"><span>${Trizone.escapeHtml(initials)}</span></div>
+    <div class="lb-player">
+      <strong>${Trizone.escapeHtml(entry.username)}</strong>
+      <span><em class="${tierClass(entry.tier)}">${Trizone.escapeHtml(entry.tier)}</em><b class="lb-elo-chip ${tierClass(entry.tier)}">${entry.elo} ELO</b><span class="lb-record">${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></span>
+    </div>
     <div class="lb-badges">${renderBadges(entry.kits)}</div>
   </article>`;
 }
 function applySearch() {
   const q = String(document.getElementById('leaderboard-search')?.value || '').trim().toLowerCase();
   const filtered = q ? leaderboardEntries.filter((e) => String(e.username).toLowerCase().includes(q)) : leaderboardEntries;
-  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : '<div class="empty-state"><h2>Aucun joueur</h2><p>Aucun résultat pour cette recherche.</p></div>';
+  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : '<div class="empty-state lb-empty"><div class="lb-empty-icon">🏆</div><h2>Aucun joueur</h2><p>Aucun résultat pour cette recherche.</p></div>';
 }
 async function loadLeaderboard(kit) {
   activeKit = kit;
@@ -26,9 +36,12 @@ async function loadLeaderboard(kit) {
   const root = document.getElementById('leaderboard-root'); root.innerHTML = '<div class="skeleton"></div>';
   const info = kit === 'overall' ? { name: 'Overall', emoji: '🏆' } : kitCatalog.find((k) => k.key === kit) || { name: kit, emoji: '⚔' };
   document.getElementById('leaderboard-title').textContent = `${info.emoji || '⚔'} ${info.name}`;
-  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement par ELO moyen des kits joués' : 'Classement par ELO de ce kit';
-  try { const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`); leaderboardEntries = data.entries || []; applySearch(); }
-  catch (error) { root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
+  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement par ELO moyen · 300 ELO minimum' : `Classement ${info.name} · chaque joueur commence à 300 ELO`;
+  try {
+    const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`);
+    leaderboardEntries = data.entries || [];
+    applySearch();
+  } catch (error) { root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
 }
 async function bootLeaderboard() {
   trizoneHeader('leaderboard'); trizoneFooter(); await Trizone.boot();
