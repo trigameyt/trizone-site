@@ -234,7 +234,13 @@ function safeEqualHex(a, b) {
   }
 }
 
-const PAID_RANK_ORDER = ['copper', 'iron', 'gold', 'diamond', 'netherite'];
+const PAID_RANK_ORDER = [
+  'default_plus',
+  'vip',
+  'vip_plus',
+  'hero',
+  'emperor'
+];
 
 function paidRankConfig() {
   return PAID_RANK_ORDER.map((key, index) => ({
