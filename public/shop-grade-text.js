@@ -1,28 +1,40 @@
 (() => {
   "use strict";
 
-  // Texte affiché dans la zone violette de chaque carte.
-  // La clé technique "Emperor" reste compatible, mais le nom affiché devient "Imperator".
-  const GRADE_LABELS = [
-    { match: ["imperator", "emperor"], label: "IMPERATOR" },
-    { match: ["hero"], label: "HERO" },
-    { match: ["vip+"], label: "VIP+" },
-    { match: ["vip"], label: "VIP" },
-    { match: ["default+"], label: "DEFAULT+" },
+  /*
+   * Trizone Shop — texte dynamique des cartes + suppression de la barre verte.
+   *
+   * Affichage :
+   *   Default+  -> DEFAULT+
+   *   VIP       -> VIP
+   *   VIP+      -> VIP+
+   *   Hero      -> HERO
+   *   Emperor   -> IMPERATOR
+   *
+   * La clé technique "emperor" peut rester utilisée côté backend/Render.
+   */
+
+  const GRADES = [
+    { names: ["imperator", "emperor"], label: "IMPERATOR" },
+    { names: ["hero"], label: "HERO" },
+    { names: ["vip+"], label: "VIP+" },
+    { names: ["vip"], label: "VIP" },
+    { names: ["default+"], label: "DEFAULT+" }
   ];
 
-  function normalize(value) {
-    return String(value || "")
+  const normalize = (value) =>
+    String(value ?? "")
+      .replace(/\u00a0/g, " ")
       .replace(/\s+/g, " ")
       .trim()
       .toLowerCase();
-  }
 
-  function getGradeLabelFromText(text) {
-    const normalized = normalize(text);
+  function gradeFromText(text) {
+    const value = normalize(text);
 
-    for (const grade of GRADE_LABELS) {
-      if (grade.match.some((name) => normalized.includes(name))) {
+    // Important : VIP+ doit être testé avant VIP.
+    for (const grade of GRADES) {
+      if (grade.names.some((name) => value.includes(name))) {
         return grade.label;
       }
     }
@@ -30,22 +42,56 @@
     return null;
   }
 
-  function findGradeLabelForElement(element) {
-    // On remonte dans les parents de la carte afin de trouver le nom du grade.
-    let current = element;
+  function findCardGrade(startElement) {
+    let current = startElement;
 
-    for (let depth = 0; current && depth < 8; depth += 1) {
-      const label = getGradeLabelFromText(current.textContent);
-      if (label) return label;
+    // On remonte jusqu'à BODY, sans limite artificielle de profondeur.
+    while (current && current !== document.body) {
+      const label = gradeFromText(current.textContent);
+
+      // L'ancêtre doit contenir le nom d'un grade ET rester de taille raisonnable
+      // pour éviter de prendre toute la page.
+      if (label && current.querySelectorAll("*").length < 80) {
+        return label;
+      }
+
       current = current.parentElement;
     }
 
     return null;
   }
 
-  function renameEmperorToImperator(root = document) {
+  function replaceTrizoneLabels() {
     const walker = document.createTreeWalker(
-      root,
+      document.body,
+      NodeFilter.SHOW_TEXT
+    );
+
+    const nodes = [];
+
+    while (walker.nextNode()) {
+      nodes.push(walker.currentNode);
+    }
+
+    for (const node of nodes) {
+      const text = String(node.nodeValue ?? "").trim();
+
+      if (text.toUpperCase() !== "TRIZONE") continue;
+
+      const parent = node.parentElement;
+      if (!parent) continue;
+
+      const label = findCardGrade(parent);
+      if (!label) continue;
+
+      node.nodeValue = label;
+      parent.dataset.gradeBanner = label;
+    }
+  }
+
+  function renameEmperorToImperator() {
+    const walker = document.createTreeWalker(
+      document.body,
       NodeFilter.SHOW_TEXT
     );
 
@@ -58,61 +104,90 @@
     for (const node of nodes) {
       if (!node.nodeValue) continue;
 
-      // Ne change que le texte visible, jamais les IDs techniques du backend.
       node.nodeValue = node.nodeValue
         .replace(/\bEmperor\b/g, "Imperator")
         .replace(/\bEMPEROR\b/g, "IMPERATOR");
     }
   }
 
-  function updateTrizoneLabels(root = document) {
-    const elements = root.querySelectorAll
-      ? root.querySelectorAll("*")
-      : [];
+  function removeManagedPaymentsBanner() {
+    const all = Array.from(document.body.querySelectorAll("*"));
 
-    for (const element of elements) {
-      if (element.children.length !== 0) continue;
+    // On cherche le plus petit élément contenant le texte de la barre verte.
+    const candidates = all.filter((element) => {
+      const text = normalize(element.textContent);
+      return (
+        text.includes("achat pour") &&
+        text.includes("stripe managed payments") &&
+        text.includes("link")
+      );
+    });
 
-      const text = String(element.textContent || "").trim();
+    if (!candidates.length) return;
 
-      if (text !== "TRIZONE") continue;
+    candidates.sort((a, b) => {
+      const aCount = a.querySelectorAll("*").length;
+      const bCount = b.querySelectorAll("*").length;
+      return aCount - bCount;
+    });
 
-      const label = findGradeLabelForElement(element);
-      if (!label) continue;
+    let target = candidates[0];
 
-      element.textContent = label;
+    // Si son parent ne contient rien d'autre que le même message,
+    // on masque le conteneur complet pour supprimer aussi le fond/bord vert.
+    for (let i = 0; i < 3 && target.parentElement; i += 1) {
+      const parent = target.parentElement;
 
-      // Permet de repérer facilement les éléments modifiés dans l'inspecteur.
-      element.dataset.trizoneGradeLabel = label.toLowerCase();
+      if (
+        normalize(parent.textContent) === normalize(target.textContent) &&
+        parent.querySelectorAll("*").length <= 12
+      ) {
+        target = parent;
+      } else {
+        break;
+      }
     }
+
+    target.style.setProperty("display", "none", "important");
+    target.setAttribute("aria-hidden", "true");
+    target.dataset.trizoneHiddenManagedBanner = "true";
   }
 
-  function refresh(root = document) {
-    renameEmperorToImperator(root);
-    updateTrizoneLabels(root);
+  function refresh() {
+    renameEmperorToImperator();
+    replaceTrizoneLabels();
+    removeManagedPaymentsBanner();
+  }
+
+  let scheduled = false;
+
+  function scheduleRefresh() {
+    if (scheduled) return;
+    scheduled = true;
+
+    requestAnimationFrame(() => {
+      scheduled = false;
+      refresh();
+    });
   }
 
   function start() {
-    refresh(document);
+    refresh();
 
-    // Les produits Stripe arrivent de façon dynamique :
-    // on surveille donc les nouvelles cartes ajoutées à la page.
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!(node instanceof Element)) continue;
-          refresh(node);
-        }
-      }
-
-      // Sécurité pour les modifications de texte d'une carte déjà présente.
-      updateTrizoneLabels(document);
-    });
+    // Les produits Stripe sont chargés dynamiquement.
+    const observer = new MutationObserver(scheduleRefresh);
 
     observer.observe(document.body, {
       childList: true,
       subtree: true,
+      characterData: true
     });
+
+    // Sécurité supplémentaire pendant le chargement initial.
+    const intervals = [250, 600, 1200, 2500, 5000];
+    for (const delay of intervals) {
+      setTimeout(refresh, delay);
+    }
   }
 
   if (document.readyState === "loading") {
