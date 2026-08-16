@@ -100,6 +100,8 @@ async function initDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE duel_kits ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
     CREATE TABLE IF NOT EXISTS duel_player_stats (
       minecraft_uuid TEXT NOT NULL,
       minecraft_username TEXT NOT NULL,
@@ -174,6 +176,7 @@ async function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_stripe_orders_active_rank ON stripe_orders(discord_id, active, rank_key);
     CREATE INDEX IF NOT EXISTS idx_minecraft_delivery_pending ON minecraft_deliveries(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_minecraft_rank ON minecraft_accounts(minecraft_rank);
+    CREATE INDEX IF NOT EXISTS idx_duel_kits_active_order ON duel_kits(active, sort_order, display_name);
     CREATE INDEX IF NOT EXISTS idx_duel_stats_kit_elo ON duel_player_stats(kit_key, elo DESC, wins DESC);
     CREATE INDEX IF NOT EXISTS idx_duel_stats_username ON duel_player_stats(LOWER(minecraft_username));
     CREATE INDEX IF NOT EXISTS idx_duel_settings_selected ON duel_player_settings(selected_kit);

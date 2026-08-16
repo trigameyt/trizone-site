@@ -234,13 +234,7 @@ function safeEqualHex(a, b) {
   }
 }
 
-const PAID_RANK_ORDER = [
-  'default_plus',
-  'vip',
-  'vip_plus',
-  'hero',
-  'emperor'
-];
+const PAID_RANK_ORDER = ['copper', 'iron', 'gold', 'diamond', 'netherite'];
 
 function paidRankConfig() {
   return PAID_RANK_ORDER.map((key, index) => ({
@@ -782,19 +776,19 @@ async function duelPlayerPayload(identity) {
                COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
                COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths,COALESCE(s.streak,0)::int AS streak,
                COALESCE(s.best_streak,0)::int AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played
-        FROM identities i CROSS JOIN duel_kits k
+        FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
       ), ranked AS (
         SELECT *,RANK() OVER (PARTITION BY kit_key ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
       ) SELECT * FROM ranked WHERE identity_key=$1 ORDER BY sort_order,display_name
     `, [identityKey]),
-    query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits ORDER BY sort_order,display_name`),
+    query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`),
     query(`
       WITH ${ctes}, all_kit_stats AS (
         SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
                COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
                COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
-        FROM identities i CROSS JOIN duel_kits k
+        FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
       ), agg AS (
         SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
@@ -1222,6 +1216,70 @@ async function fetchStripeShopProducts() {
 }
 
 
+// ---- Duels v3.2.4 : catalogue kits autoritaire depuis kits.yml du Lobby ----
+function parseLobbyKitCatalog(content) {
+  const out = [];
+  const text = String(content || '').replace(/\r/g, '');
+  const lines = text.split('\n');
+  let inKits = false;
+  let rootIndent = -1;
+  let kitIndent = -1;
+  const seen = new Set();
+
+  const indentOf = (line) => {
+    let n = 0;
+    for (const c of line) {
+      if (c === ' ') n += 1;
+      else if (c === '\t') n += 2;
+      else break;
+    }
+    return n;
+  };
+  const unquote = (value) => {
+    let v = String(value || '').trim();
+    if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) v = v.slice(1, -1);
+    return v;
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = indentOf(rawLine);
+    if (!inKits) {
+      if (/^kits\s*:\s*(?:#.*)?$/i.test(trimmed)) {
+        inKits = true;
+        rootIndent = indent;
+      }
+      continue;
+    }
+    if (indent <= rootIndent) break;
+    if (kitIndent < 0) kitIndent = indent;
+    if (indent !== kitIndent || !trimmed.endsWith(':')) continue;
+    const rawKey = unquote(trimmed.slice(0, -1).trim());
+    const key = normalizeKitKey(rawKey);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out;
+}
+
+async function getLobbyCanonicalKitKeys(db = null) {
+  const run = db ? db.query.bind(db) : query;
+  const result = await run(`SELECT content FROM duel_sync_files WHERE file_key='kits.yml' LIMIT 1`);
+  if (!result.rowCount) return null;
+  const keys = parseLobbyKitCatalog(result.rows[0].content);
+  return keys.length ? keys : null;
+}
+
+async function reconcileDuelKitsWithLobbyFile(db = null) {
+  const run = db ? db.query.bind(db) : query;
+  const keys = await getLobbyCanonicalKitKeys(db);
+  if (!keys || !keys.length) return { applied: false, keys: [] };
+  await run(`UPDATE duel_kits SET active = (kit_key = ANY($1::text[])), updated_at = CASE WHEN active IS DISTINCT FROM (kit_key = ANY($1::text[])) THEN NOW() ELSE updated_at END`, [keys]);
+  return { applied: true, keys };
+}
+
 // ---- Duels v3 : kits dynamiques, ELO par kit, profils et leaderboard ----
 app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
   const sourceMode = String(req.body?.source_mode || 'LEGACY').trim().toUpperCase();
@@ -1233,13 +1291,38 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const canonicalKeys = await getLobbyCanonicalKitKeys(client);
+    const canonicalSet = canonicalKeys ? new Set(canonicalKeys) : null;
+    const incomingKitKeys = [];
     for (let i = 0; i < kits.length; i += 1) {
       const row = kits[i] || {}; const key = normalizeKitKey(row.key); if (!key) continue;
+      // Si kits.yml du Lobby est connu, il est la source de verite du catalogue.
+      // Un ancien snapshot PVPpractice ne peut donc plus reactiver un kit supprime.
+      if (canonicalSet && !canonicalSet.has(key)) continue;
+      incomingKitKeys.push(key);
       const name = String(row.name || key).slice(0, 80);
       const icon = String(row.icon || 'IRON_SWORD').replace(/[^A-Z0-9_]/g, '').slice(0, 64) || 'IRON_SWORD';
       const emoji = String(row.emoji || '⚔').slice(0, 12);
-      await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,updated_at) VALUES($1,$2,$3,$4,$5,NOW())
-        ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, updated_at=NOW()`, [key,name,icon,emoji,Number(row.order ?? i)]);
+      if (authoritative) {
+        await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,active,updated_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW())
+          ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, active=TRUE, updated_at=NOW()`,
+          [key,name,icon,emoji,Number(row.order ?? i)]);
+      } else {
+        // Le Lobby peut annoncer un nouveau kit, mais ne peut pas reactiver un kit que le BACKEND a supprime.
+        await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,active,updated_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW())
+          ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, updated_at=NOW()`,
+          [key,name,icon,emoji,Number(row.order ?? i)]);
+      }
+    }
+
+    // Le snapshot BACKEND est la liste officielle des kits actuellement existants.
+    // On garde les anciennes stats en base, mais les kits absents deviennent inactifs et disparaissent du site.
+    if (canonicalKeys && canonicalKeys.length) {
+      await client.query(`UPDATE duel_kits SET active=FALSE, updated_at=NOW()
+        WHERE active=TRUE AND NOT (kit_key = ANY($1::text[]))`, [canonicalKeys]);
+    } else if (authoritative && incomingKitKeys.length) {
+      await client.query(`UPDATE duel_kits SET active=FALSE, updated_at=NOW()
+        WHERE active=TRUE AND NOT (kit_key = ANY($1::text[]))`, [incomingKitKeys]);
     }
 
     // Seul PVPpractice (BACKEND) a le droit d'ecraser les ELO/stats.
@@ -1284,7 +1367,7 @@ async function applyDuelKitOrder(requestedOrder) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const current = await client.query('SELECT kit_key FROM duel_kits ORDER BY sort_order, display_name');
+    const current = await client.query('SELECT kit_key FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
     const existing = current.rows.map((row) => row.kit_key);
     const finalOrder = requested.filter((key) => existing.includes(key));
     for (const key of existing) if (!finalOrder.includes(key)) finalOrder.push(key);
@@ -1310,7 +1393,7 @@ app.post('/api/minecraft/duels/kits/icon', requireMinecraftSecret, minecraftSync
     const kit = normalizeKitKey(req.body?.kit);
     const icon = String(req.body?.icon || '').trim().toUpperCase().replace(/^MINECRAFT:/, '').replace(/[^A-Z0-9_]/g, '').slice(0, 64);
     if (!kit || !icon) return res.status(400).json({ error: 'Kit ou Material invalide.' });
-    const result = await query(`UPDATE duel_kits SET icon_material=$2, updated_at=NOW() WHERE kit_key=$1 RETURNING kit_key,display_name,icon_material`, [kit, icon]);
+    const result = await query(`UPDATE duel_kits SET icon_material=$2, updated_at=NOW() WHERE kit_key=$1 AND active=TRUE RETURNING kit_key,display_name,icon_material`, [kit, icon]);
     if (!result.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
     res.json({ ok: true, kit: result.rows[0].kit_key, icon: result.rows[0].icon_material });
   } catch (error) {
@@ -1332,7 +1415,8 @@ app.post('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSync
       VALUES('kits.yml',$1,$2,$3,NOW())
       ON CONFLICT(file_key) DO UPDATE SET content=EXCLUDED.content,sha256=EXCLUDED.sha256,source_server=EXCLUDED.source_server,updated_at=NOW()`,
       [content, sha256, source]);
-    res.json({ ok: true, sha256, bytes: Buffer.byteLength(content, 'utf8') });
+    const reconciled = await reconcileDuelKitsWithLobbyFile();
+    res.json({ ok: true, sha256, bytes: Buffer.byteLength(content, 'utf8'), canonical_kits: reconciled.keys });
   } catch (error) {
     console.error('[duels kits-file POST]', error);
     res.status(500).json({ error: 'Impossible de sauvegarder kits.yml.' });
@@ -1358,14 +1442,14 @@ app.get('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSyncL
 app.get('/api/minecraft/duels/network-snapshot.properties', requireMinecraftSecret, minecraftSyncLimiter, async (_req, res) => {
   try {
     const [kitsResult, identitiesResult, settingsResult, statsResult] = await Promise.all([
-      query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits ORDER BY sort_order,display_name`),
+      query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`),
       query(`SELECT minecraft_uuid, MAX(minecraft_username) AS minecraft_username FROM (
         SELECT minecraft_uuid,minecraft_username FROM minecraft_accounts
         UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_stats
         UNION ALL SELECT minecraft_uuid,minecraft_username FROM duel_player_settings WHERE minecraft_username IS NOT NULL
       ) x GROUP BY minecraft_uuid ORDER BY MAX(minecraft_username)`),
-      query(`SELECT minecraft_uuid,minecraft_username,selected_kit FROM duel_player_settings`),
-      query(`SELECT minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak FROM duel_player_stats`)
+      query(`SELECT s.minecraft_uuid,s.minecraft_username,s.selected_kit FROM duel_player_settings s JOIN duel_kits k ON k.kit_key=s.selected_kit WHERE k.active=TRUE`),
+      query(`SELECT s.minecraft_uuid,s.minecraft_username,s.kit_key,s.elo,s.wins,s.losses,s.kills,s.deaths,s.streak,s.best_streak FROM duel_player_stats s JOIN duel_kits k ON k.kit_key=s.kit_key WHERE k.active=TRUE`)
     ]);
 
     const lines = ['# Trizone Duels network snapshot v3.2'];
@@ -1431,7 +1515,7 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
   try {
     const uuid = normalizeUuid(req.body?.uuid); const kit = normalizeKitKey(req.body?.kit);
     if (!uuid || !kit) return res.status(400).json({ error: 'UUID ou kit invalide.' });
-    const exists = await query('SELECT 1 FROM duel_kits WHERE kit_key=$1',[kit]); if (!exists.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
+    const exists = await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]); if (!exists.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
     const username = String(req.body?.username || '').slice(0,32) || null;
     await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=COALESCE(EXCLUDED.minecraft_username,duel_player_settings.minecraft_username), selected_kit=EXCLUDED.selected_kit, updated_at=NOW()`,[uuid,username,kit]);
     res.json({ok:true,kit});
@@ -1439,7 +1523,13 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
 });
 
 app.get('/api/duels/kits', async (_req,res) => {
-  try { const r=await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits ORDER BY sort_order, display_name'); res.json({kits:r.rows, tiers:duelTierThresholds}); }
+  try {
+    // Reconciliation aussi a la lecture : apres un redeploiement, un ancien kit fantome
+    // disparait immediatement si le kits.yml stocke du Lobby ne le contient plus.
+    await reconcileDuelKitsWithLobbyFile();
+    const r=await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
+    res.json({kits:r.rows, tiers:duelTierThresholds});
+  }
   catch(error){ console.error('[duels kits]',error); res.status(500).json({error:'Impossible de charger les kits.'}); }
 });
 
@@ -1460,7 +1550,7 @@ app.get('/api/duels/leaderboard', async (req,res) => {
           SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
                  COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,
                  COALESCE(s.losses,0)::int AS losses,COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
-          FROM identities i CROSS JOIN duel_kits k
+          FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
           LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
         ), agg AS (
           SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
@@ -1474,7 +1564,7 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     } else {
       const kit=normalizeKitKey(kitRaw);
       if(!kit) return res.status(400).json({error:'Kit invalide.'});
-      const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1',[kit]);
+      const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]);
       if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
       rows=(await query(`
         WITH ${ctes}, base AS (
@@ -1492,7 +1582,7 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     if(identityKeys.length) badges=(await query(`
       WITH ${ctes}, ids AS (SELECT UNNEST($1::text[]) AS identity_key)
       SELECT ids.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,COALESCE(s.elo,300)::int AS elo
-      FROM ids CROSS JOIN duel_kits k
+      FROM ids CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
       LEFT JOIN best_stats s ON s.identity_key=ids.identity_key AND s.kit_key=k.kit_key
       ORDER BY ids.identity_key,k.sort_order,k.display_name`,[identityKeys])).rows;
     const byPlayer=new Map();
@@ -1513,7 +1603,7 @@ app.get('/api/account/duels', requireAuth, async (req,res) => {
 
 app.post('/api/account/duels/settings', requireAuth, sensitiveLimiter, async (req,res) => {
   try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.status(400).json({error:'Compte Minecraft non lié.'}); const kit=normalizeKitKey(req.body?.kit); if(!kit) return res.status(400).json({error:'Kit invalide.'});
-    const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1',[kit]); if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
+    const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]); if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
     await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username,selected_kit=EXCLUDED.selected_kit,updated_at=NOW()`,[me.minecraft_uuid,me.minecraft_username,kit]);
     res.json({ok:true,kit});
   } catch(error){ console.error('[account duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder ton kit affiché.'}); }
@@ -1648,7 +1738,7 @@ app.get('/api/account/purchases', requireAuth, async (req, res) => {
 app.get('/api/admin/duels/kits/order', requireAdmin, async (_req, res) => {
   try {
     const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
-      FROM duel_kits ORDER BY sort_order,display_name`);
+      FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`);
     res.json({ kits: result.rows });
   } catch (error) {
     console.error('[admin duel kit order GET]', error);
@@ -1660,7 +1750,7 @@ app.put('/api/admin/duels/kits/order', requireAdmin, sensitiveLimiter, async (re
   try {
     const order = await applyDuelKitOrder(req.body?.order);
     const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
-      FROM duel_kits ORDER BY sort_order,display_name`);
+      FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`);
     res.json({ ok: true, order, kits: result.rows });
   } catch (error) {
     res.status(400).json({ error: error.message || 'Ordre invalide.' });
