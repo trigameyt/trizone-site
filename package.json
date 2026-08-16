@@ -9,12 +9,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "prestart": "node scripts/apply-shop-ranks.js",
-    "start": "node server.js",
-    "predev": "node scripts/apply-shop-ranks.js",
-    "dev": "node --watch server.js",
-    "precheck": "node scripts/apply-shop-ranks.js",
-    "check": "node --check server.js && node --check src/db.js"
+    "start": "node start.js",
+    "dev": "node --watch start.js",
+    "check": "node --check start.js && node --check server.js && node --check src/db.js"
   },
   "dependencies": {
     "cookie-session": "^2.1.0",
