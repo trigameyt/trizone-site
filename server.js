@@ -187,7 +187,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://files.stripe.com', 'https://*.stripe.com'],
+      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://files.stripe.com', 'https://*.stripe.com', 'https://assets.mcasset.cloud'],
       styleSrc: ["'self'"],
       fontSrc: ["'self'", 'data:'],
       scriptSrc: ["'self'"],
@@ -784,12 +784,18 @@ async function duelPlayerPayload(identity) {
     `, [identityKey]),
     query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits ORDER BY sort_order,display_name`),
     query(`
-      WITH ${ctes}, agg AS (
-        SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,COALESCE(ROUND(AVG(s.elo))::int,300) AS elo,
-               COALESCE(SUM(s.wins),0)::int AS wins,COALESCE(SUM(s.losses),0)::int AS losses,
-               COALESCE(SUM(s.kills),0)::int AS kills,COALESCE(SUM(s.deaths),0)::int AS deaths
-        FROM identities i LEFT JOIN best_stats s ON s.identity_key=i.identity_key
-        GROUP BY i.identity_key,i.minecraft_uuid,i.minecraft_username
+      WITH ${ctes}, all_kit_stats AS (
+        SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
+               COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
+               COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
+        FROM identities i CROSS JOIN duel_kits k
+        LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
+      ), agg AS (
+        SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
+               COALESCE(SUM(wins),0)::int AS wins,COALESCE(SUM(losses),0)::int AS losses,
+               COALESCE(SUM(kills),0)::int AS kills,COALESCE(SUM(deaths),0)::int AS deaths
+        FROM all_kit_stats
+        GROUP BY identity_key,minecraft_uuid,minecraft_username
       ), ranked AS (
         SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM agg
       ) SELECT * FROM ranked WHERE identity_key=$1
@@ -840,7 +846,7 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.1.1' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.1.2' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
@@ -1227,7 +1233,7 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
       const icon = String(row.icon || 'IRON_SWORD').replace(/[^A-Z0-9_]/g, '').slice(0, 64) || 'IRON_SWORD';
       const emoji = String(row.emoji || '⚔').slice(0, 12);
       await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,updated_at) VALUES($1,$2,$3,$4,$5,NOW())
-        ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, icon_material=EXCLUDED.icon_material, emoji=EXCLUDED.emoji, updated_at=NOW()`, [key,name,icon,emoji,Number(row.order ?? i)]);
+        ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, updated_at=NOW()`, [key,name,icon,emoji,Number(row.order ?? i)]);
     }
 
     // Seul PVPpractice (BACKEND) a le droit d'ecraser les ELO/stats.
@@ -1290,6 +1296,23 @@ async function applyDuelKitOrder(requestedOrder) {
   }
 }
 
+
+// Icône visuelle choisie en jeu avec /kiticon <kit>.
+// Le Material est conservé sur le site et redistribué à tous les serveurs Paper via le snapshot réseau.
+app.post('/api/minecraft/duels/kits/icon', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
+  try {
+    const kit = normalizeKitKey(req.body?.kit);
+    const icon = String(req.body?.icon || '').trim().toUpperCase().replace(/^MINECRAFT:/, '').replace(/[^A-Z0-9_]/g, '').slice(0, 64);
+    if (!kit || !icon) return res.status(400).json({ error: 'Kit ou Material invalide.' });
+    const result = await query(`UPDATE duel_kits SET icon_material=$2, updated_at=NOW() WHERE kit_key=$1 RETURNING kit_key,display_name,icon_material`, [kit, icon]);
+    if (!result.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
+    res.json({ ok: true, kit: result.rows[0].kit_key, icon: result.rows[0].icon_material });
+  } catch (error) {
+    console.error('[duels kit icon]', error);
+    res.status(500).json({ error: 'Impossible de modifier l\'icône du kit.' });
+  }
+});
+
 // Relay fiable du fichier kits.yml : Lobby -> site -> PVPpractice.
 app.post('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSyncLimiter, express.text({ type: 'text/plain', limit: '2mb' }), async (req, res) => {
   try {
@@ -1339,7 +1362,7 @@ app.get('/api/minecraft/duels/network-snapshot.properties', requireMinecraftSecr
       query(`SELECT minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak FROM duel_player_stats`)
     ]);
 
-    const lines = ['# Trizone Duels network snapshot v3.1'];
+    const lines = ['# Trizone Duels network snapshot v3.2'];
     for (const tier of DUEL_TIER_ORDER) lines.push(`tier.threshold.${tier}=${Number(duelTierThresholds[tier] ?? DUEL_TIER_DEFAULTS[tier])}`);
     for (const kit of kitsResult.rows) {
       const key = normalizeKitKey(kit.kit_key); if (!key) continue;
@@ -1427,13 +1450,18 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     let rows;
     if(kitRaw==='overall') {
       rows=(await query(`
-        WITH ${ctes}, agg AS (
-          SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
-                 COALESCE(ROUND(AVG(s.elo))::int,300) AS elo,
-                 COALESCE(SUM(s.wins),0)::int AS wins,COALESCE(SUM(s.losses),0)::int AS losses,
-                 COALESCE(SUM(s.kills),0)::int AS kills,COALESCE(SUM(s.deaths),0)::int AS deaths
-          FROM identities i LEFT JOIN best_stats s ON s.identity_key=i.identity_key
-          GROUP BY i.identity_key,i.minecraft_uuid,i.minecraft_username
+        WITH ${ctes}, all_kit_stats AS (
+          SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
+                 COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,
+                 COALESCE(s.losses,0)::int AS losses,COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
+          FROM identities i CROSS JOIN duel_kits k
+          LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
+        ), agg AS (
+          SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
+                 COALESCE(SUM(wins),0)::int AS wins,COALESCE(SUM(losses),0)::int AS losses,
+                 COALESCE(SUM(kills),0)::int AS kills,COALESCE(SUM(deaths),0)::int AS deaths
+          FROM all_kit_stats
+          GROUP BY identity_key,minecraft_uuid,minecraft_username
         ), ranked AS (
           SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM agg
         ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $1`,[limit])).rows;
@@ -1457,14 +1485,14 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     let badges=[];
     if(identityKeys.length) badges=(await query(`
       WITH ${ctes}, ids AS (SELECT UNNEST($1::text[]) AS identity_key)
-      SELECT ids.identity_key,k.kit_key,k.display_name,k.emoji,k.sort_order,COALESCE(s.elo,300)::int AS elo
+      SELECT ids.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,COALESCE(s.elo,300)::int AS elo
       FROM ids CROSS JOIN duel_kits k
       LEFT JOIN best_stats s ON s.identity_key=ids.identity_key AND s.kit_key=k.kit_key
       ORDER BY ids.identity_key,k.sort_order,k.display_name`,[identityKeys])).rows;
     const byPlayer=new Map();
     for(const b of badges){
       if(!byPlayer.has(b.identity_key)) byPlayer.set(b.identity_key,[]);
-      byPlayer.get(b.identity_key).push({kit:b.kit_key,name:b.display_name,emoji:b.emoji,elo:Number(b.elo),tier:duelTier(b.elo)});
+      byPlayer.get(b.identity_key).push({kit:b.kit_key,name:b.display_name,icon:b.icon_material,emoji:b.emoji,elo:Number(b.elo),tier:duelTier(b.elo)});
     }
     res.json({kit:kitRaw,entries:rows.map((r)=>(
       {position:Number(r.placement||0),uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.identity_key)||[]}

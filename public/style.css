@@ -741,3 +741,44 @@ td small { color: var(--muted); margin-top: 3px; }
   .kit-order-row { grid-template-columns:36px 36px minmax(0,1fr); }
   .kit-order-actions { grid-column:1/-1; justify-content:flex-end; }
 }
+
+/* Minecraft kit icons v3.2 - textures pixel art */
+.mc-item-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 1.45em;
+  height: 1.45em;
+  flex: 0 0 auto;
+  vertical-align: -0.25em;
+}
+.mc-item-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,.42));
+}
+.mc-item-icon img[hidden] { display: none; }
+.mc-item-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: .82em;
+  line-height: 1;
+}
+.mc-icon-tab { width: 24px; height: 24px; vertical-align: middle; }
+.mc-icon-title { width: 25px; height: 25px; vertical-align: -6px; margin-right: 2px; }
+.mc-icon-badge { width: 19px; height: 19px; }
+.mc-icon-card { width: 30px; height: 30px; }
+.mc-icon-order { width: 25px; height: 25px; }
+.mc-icon-inline { width: 19px; height: 19px; vertical-align: -5px; }
+.lb-tab > .mc-item-icon { margin-bottom: 1px; }
+.lb-kit-badge .mc-item-icon { margin-top: 1px; }
+.duel-kit-icon .mc-item-icon { width: 31px; height: 31px; }
+.kit-order-icon .mc-item-icon { width: 25px; height: 25px; }
+.duel-preview-value { display: inline-flex; align-items: center; gap: 4px; }

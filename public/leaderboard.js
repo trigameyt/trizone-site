@@ -9,7 +9,7 @@ function avatarClass(name) {
   return `avatar-c${h}`;
 }
 function renderBadges(kits) {
-  return (kits || []).slice(0, 12).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}"><i>${Trizone.escapeHtml(k.emoji || '⚔')}</i><b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
+  return (kits || []).slice(0, 12).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}">${Trizone.minecraftIconHtml(k.icon, k.emoji || '⚔', 'mc-icon-badge')}<b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
 }
 function row(entry) {
   const medal = entry.position === 1 ? '🥇' : entry.position === 2 ? '🥈' : entry.position === 3 ? '🥉' : `${entry.position}.`;
@@ -29,13 +29,16 @@ function applySearch() {
   const q = String(document.getElementById('leaderboard-search')?.value || '').trim().toLowerCase();
   const filtered = q ? leaderboardEntries.filter((e) => String(e.username).toLowerCase().includes(q)) : leaderboardEntries;
   document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : '<div class="empty-state lb-empty"><div class="lb-empty-icon">🏆</div><h2>Aucun joueur</h2><p>Aucun résultat pour cette recherche.</p></div>';
+  Trizone.bindMinecraftIcons(document.getElementById('leaderboard-root'));
 }
 async function loadLeaderboard(kit) {
   activeKit = kit;
   document.querySelectorAll('[data-lb-kit]').forEach((b) => b.classList.toggle('active', b.dataset.lbKit === kit));
   const root = document.getElementById('leaderboard-root'); root.innerHTML = '<div class="skeleton"></div>';
-  const info = kit === 'overall' ? { name: 'Overall', emoji: '🏆' } : kitCatalog.find((k) => k.key === kit) || { name: kit, emoji: '⚔' };
-  document.getElementById('leaderboard-title').textContent = `${info.emoji || '⚔'} ${info.name}`;
+  const info = kit === 'overall' ? { name: 'Overall', emoji: '🏆', icon: null } : kitCatalog.find((k) => k.key === kit) || { name: kit, emoji: '⚔', icon: 'IRON_SWORD' };
+  const title = document.getElementById('leaderboard-title');
+  title.innerHTML = kit === 'overall' ? `🏆 ${Trizone.escapeHtml(info.name)}` : `${Trizone.minecraftIconHtml(info.icon, info.emoji || '⚔', 'mc-icon-title')} ${Trizone.escapeHtml(info.name)}`;
+  Trizone.bindMinecraftIcons(title);
   document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement par ELO moyen · 300 ELO minimum' : `Classement ${info.name} · chaque joueur commence à 300 ELO`;
   try {
     const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`);
@@ -47,7 +50,9 @@ async function bootLeaderboard() {
   trizoneHeader('leaderboard'); trizoneFooter(); await Trizone.boot();
   try {
     const data = await Trizone.json('/api/duels/kits'); kitCatalog = data.kits || [];
-    document.getElementById('leaderboard-tabs').innerHTML = `<button class="lb-tab active" data-lb-kit="overall"><span>🏆</span><b>Overall</b></button>${kitCatalog.map((k) => `<button class="lb-tab" data-lb-kit="${Trizone.escapeHtml(k.key)}"><span>${Trizone.escapeHtml(k.emoji || '⚔')}</span><b>${Trizone.escapeHtml(k.name)}</b></button>`).join('')}`;
+    const tabs = document.getElementById('leaderboard-tabs');
+    tabs.innerHTML = `<button class="lb-tab active" data-lb-kit="overall"><span>🏆</span><b>Overall</b></button>${kitCatalog.map((k) => `<button class="lb-tab" data-lb-kit="${Trizone.escapeHtml(k.key)}">${Trizone.minecraftIconHtml(k.icon, k.emoji || '⚔', 'mc-icon-tab')}<b>${Trizone.escapeHtml(k.name)}</b></button>`).join('')}`;
+    Trizone.bindMinecraftIcons(tabs);
     document.querySelectorAll('[data-lb-kit]').forEach((button) => button.addEventListener('click', () => loadLeaderboard(button.dataset.lbKit)));
     await loadLeaderboard('overall');
   } catch (error) { document.getElementById('leaderboard-root').innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }

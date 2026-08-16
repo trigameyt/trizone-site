@@ -93,6 +93,39 @@ const Trizone = (() => {
     links.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => links.classList.remove('open')));
   }
 
+
+  const MINECRAFT_ASSET_VERSION = '1.21.11';
+
+  function normalizeMinecraftMaterial(material) {
+    return String(material || 'IRON_SWORD')
+      .trim()
+      .toLowerCase()
+      .replace(/^minecraft:/, '')
+      .replace(/[^a-z0-9_]/g, '') || 'iron_sword';
+  }
+
+  function minecraftIconHtml(material, fallback = '⚔', extraClass = '') {
+    const key = normalizeMinecraftMaterial(material);
+    const safeClass = String(extraClass || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const itemSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/${key}.png`;
+    const blockSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/block/${key}.png`;
+    return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}" title="${escapeHtml(`minecraft:${key}`)}"><span class="mc-item-fallback">${escapeHtml(fallback || '◆')}</span><img src="${itemSrc}" data-mc-item-icon data-mc-block-src="${blockSrc}" alt="" loading="lazy" decoding="async"></span>`;
+  }
+
+  function bindMinecraftIcons(root = document) {
+    root.querySelectorAll('img[data-mc-item-icon]:not([data-mc-bound])').forEach((img) => {
+      img.dataset.mcBound = '1';
+      img.addEventListener('error', () => {
+        if (img.dataset.mcTriedBlock !== '1' && img.dataset.mcBlockSrc) {
+          img.dataset.mcTriedBlock = '1';
+          img.src = img.dataset.mcBlockSrc;
+          return;
+        }
+        img.hidden = true;
+      });
+    });
+  }
+
   async function copyText(value) {
     if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
     const temp = document.createElement('textarea');
@@ -146,5 +179,5 @@ const Trizone = (() => {
     return { me, config };
   }
 
-  return { state, json, escapeHtml, stripHtml, rankClass, rankLabel, loadMe, loadSiteConfig, applySiteConfig, showToast, boot };
+  return { state, json, escapeHtml, stripHtml, rankClass, rankLabel, loadMe, loadSiteConfig, applySiteConfig, showToast, boot, minecraftIconHtml, bindMinecraftIcons, normalizeMinecraftMaterial };
 })();

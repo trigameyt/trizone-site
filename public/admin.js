@@ -134,7 +134,7 @@ function renderDuelKitOrder() {
   root.innerHTML = duelKits.map((kit, index) => `
     <div class="kit-order-row" data-kit-key="${Trizone.escapeHtml(kit.key)}">
       <span class="kit-order-index">#${index + 1}</span>
-      <span class="kit-order-icon">${Trizone.escapeHtml(kit.emoji || '⚔')}</span>
+      <span class="kit-order-icon">${Trizone.minecraftIconHtml(kit.icon, kit.emoji || '⚔', 'mc-icon-order')}</span>
       <div class="kit-order-info">
         <strong>${Trizone.escapeHtml(kit.name || kit.key)}</strong>
         <small>${Trizone.escapeHtml(kit.key)}</small>
@@ -146,6 +146,7 @@ function renderDuelKitOrder() {
         <button class="btn btn-quiet btn-tiny" type="button" data-kit-order-action="last" aria-label="Mettre en dernier">⇥</button>
       </div>
     </div>`).join('');
+  Trizone.bindMinecraftIcons(root);
 }
 
 function moveDuelKit(key, action) {

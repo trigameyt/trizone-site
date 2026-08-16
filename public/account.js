@@ -105,7 +105,7 @@ function duelTierClass(tier) {
 
 function duelKitCard(stat, selected) {
   return `<article class="duel-kit-card ${selected ? 'selected' : ''}" data-duel-kit="${Trizone.escapeHtml(stat.kit)}">
-    <div class="duel-kit-icon">${Trizone.escapeHtml(stat.emoji || '⚔')}</div>
+    <div class="duel-kit-icon">${Trizone.minecraftIconHtml(stat.icon, stat.emoji || '⚔', 'mc-icon-card')}</div>
     <div class="duel-kit-main">
       <div class="duel-kit-title"><strong>${Trizone.escapeHtml(stat.name || stat.kit)}</strong>${selected ? '<span class="selected-label">Affiché</span>' : ''}</div>
       <div class="elo-line"><span class="${duelTierClass(stat.tier)}">${Trizone.escapeHtml(stat.tier)}</span><b>${Number(stat.elo || 300)} ELO</b><span>#${Number(stat.placement || 0) || '—'}</span></div>
@@ -153,8 +153,9 @@ async function loadDuels() {
         <div><span>Victoires / Défaites</span><strong>${o.wins} / ${o.losses}</strong></div>
         <div><span>KDR</span><strong>${o.kdr}</strong></div>
       </div>
-      <div class="duel-selected-preview">Affichage actuel : ${(() => { const s=data.kits.find(k=>k.kit===data.selected_kit)||data.kits[0]; return `<b>| ${Trizone.escapeHtml(s.emoji || '⚔')} ${Trizone.escapeHtml(s.tier)} ${s.elo}</b>`; })()}</div>
+      <div class="duel-selected-preview">Affichage actuel : ${(() => { const s=data.kits.find(k=>k.kit===data.selected_kit)||data.kits[0]; return `<b class="duel-preview-value">| ${Trizone.minecraftIconHtml(s.icon, s.emoji || '⚔', 'mc-icon-inline')} ${Trizone.escapeHtml(s.tier)} ${s.elo}</b>`; })()}</div>
       <div class="duel-kit-list">${data.kits.map((stat) => duelKitCard(stat, stat.kit === data.selected_kit)).join('')}</div>`;
+    Trizone.bindMinecraftIcons(root);
     root.querySelectorAll('[data-select-duel-kit]').forEach((button) => button.addEventListener('click', async () => {
       button.disabled = true;
       try { await Trizone.json('/api/account/duels/settings', { method: 'POST', body: JSON.stringify({ kit: button.dataset.selectDuelKit }) }); await loadDuels(); }
