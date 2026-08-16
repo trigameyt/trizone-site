@@ -659,7 +659,9 @@ td small { color: var(--muted); margin-top: 3px; }
 .leaderboard-row.rank-tier-lt1 { border-left-color:#62d9b1; } .leaderboard-row.rank-tier-ht1 { border-left-color:#ffd45f; }
 .leaderboard-row.place-1 { border-left-color:#ffd65a; } .leaderboard-row.place-2 { border-left-color:#c8d0d8; } .leaderboard-row.place-3 { border-left-color:#db885c; }
 .leaderboard-row.place-1,.leaderboard-row.place-2,.leaderboard-row.place-3 { border-left-width:4px; }
-.lb-position { font-weight:950; font-size:1rem; color:#e7dfee; text-align:center; }
+.lb-position { font-weight:950; font-size:1rem; color:#e7dfee; text-align:center; display:grid; place-items:center; gap:1px; }
+.lb-position small { font-size:.55rem; line-height:1; color:#a99db2; font-weight:950; }
+.lb-position .mc-icon-place { width:22px; height:22px; }
 .lb-avatar { width:40px; height:40px; display:grid; place-items:center; border-radius:8px; border:1px solid rgba(255,255,255,.18); box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 4px 12px rgba(0,0,0,.2); font-size:.7rem; font-weight:950; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.55); }
 .lb-avatar.avatar-c0 { background:linear-gradient(145deg,#a34dff,#4a1f73); }
 .lb-avatar.avatar-c1 { background:linear-gradient(145deg,#4f8dff,#203f78); }
@@ -682,7 +684,8 @@ td small { color: var(--muted); margin-top: 3px; }
 .lb-kit-badge { width:37px; min-height:40px; border:1px solid currentColor; border-radius:9px; background:linear-gradient(145deg,#151119,#0b090d); display:grid; place-items:center; padding:3px; box-shadow:inset 0 0 12px color-mix(in srgb,currentColor 7%,transparent); }
 .lb-kit-badge i { font-style:normal; font-size:.84rem; line-height:1; } .lb-kit-badge b { font-size:.58rem; line-height:1; }
 .lb-empty { border-color:#3c2849; background:radial-gradient(circle at 50% 0,rgba(140,60,255,.11),transparent 55%),#100d14; }
-.lb-empty-icon { font-size:2rem; margin-bottom:5px; filter:drop-shadow(0 4px 10px rgba(255,202,60,.2)); }
+.lb-empty-icon { margin-bottom:5px; filter:drop-shadow(0 4px 10px rgba(255,202,60,.2)); }
+.lb-empty-icon .mc-icon-empty { width:34px; height:34px; }
 
 @media (max-width: 760px) {
   .duel-overall { grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -763,14 +766,6 @@ td small { color: var(--muted); margin-top: 3px; }
   filter: drop-shadow(0 2px 2px rgba(0,0,0,.42));
 }
 .mc-item-icon img[hidden] { display: none; }
-.mc-item-fallback {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  font-size: .82em;
-  line-height: 1;
-}
 .mc-icon-tab { width: 24px; height: 24px; vertical-align: middle; }
 .mc-icon-title { width: 25px; height: 25px; vertical-align: -6px; margin-right: 2px; }
 .mc-icon-badge { width: 19px; height: 19px; }
@@ -782,3 +777,13 @@ td small { color: var(--muted); margin-top: 3px; }
 .duel-kit-icon .mc-item-icon { width: 31px; height: 31px; }
 .kit-order-icon .mc-item-icon { width: 25px; height: 25px; }
 .duel-preview-value { display: inline-flex; align-items: center; gap: 4px; }
+
+/* v3.2.2 — supprime definitivement les anciens emoji derriere les textures Minecraft */
+.mc-item-fallback {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+}

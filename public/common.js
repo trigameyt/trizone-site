@@ -104,21 +104,29 @@ const Trizone = (() => {
       .replace(/[^a-z0-9_]/g, '') || 'iron_sword';
   }
 
-  function minecraftIconHtml(material, fallback = '⚔', extraClass = '') {
+  function minecraftIconHtml(material, _legacyFallback = '', extraClass = '') {
     const key = normalizeMinecraftMaterial(material);
     const safeClass = String(extraClass || '').replace(/[^a-zA-Z0-9_-]/g, '');
     const itemSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/${key}.png`;
     const blockSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/block/${key}.png`;
-    return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}" title="${escapeHtml(`minecraft:${key}`)}"><span class="mc-item-fallback">${escapeHtml(fallback || '◆')}</span><img src="${itemSrc}" data-mc-item-icon data-mc-block-src="${blockSrc}" alt="" loading="lazy" decoding="async"></span>`;
+    const fallbackSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/barrier.png`;
+    return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}" title="${escapeHtml(`minecraft:${key}`)}"><img src="${itemSrc}" data-mc-item-icon data-mc-block-src="${blockSrc}" data-mc-fallback-src="${fallbackSrc}" alt="" loading="lazy" decoding="async"></span>`;
   }
 
   function bindMinecraftIcons(root = document) {
+    // v3.2.2: retire aussi les anciens glyphes emoji encore presents dans du HTML mis en cache.
+    root.querySelectorAll('.mc-item-fallback').forEach((fallback) => fallback.remove());
     root.querySelectorAll('img[data-mc-item-icon]:not([data-mc-bound])').forEach((img) => {
       img.dataset.mcBound = '1';
       img.addEventListener('error', () => {
         if (img.dataset.mcTriedBlock !== '1' && img.dataset.mcBlockSrc) {
           img.dataset.mcTriedBlock = '1';
           img.src = img.dataset.mcBlockSrc;
+          return;
+        }
+        if (img.dataset.mcTriedFallback !== '1' && img.dataset.mcFallbackSrc) {
+          img.dataset.mcTriedFallback = '1';
+          img.src = img.dataset.mcFallbackSrc;
           return;
         }
         img.hidden = true;
