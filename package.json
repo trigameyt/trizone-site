@@ -9,8 +9,11 @@
     "node": ">=20"
   },
   "scripts": {
+    "prestart": "node scripts/apply-shop-ranks.js",
     "start": "node server.js",
+    "predev": "node scripts/apply-shop-ranks.js",
     "dev": "node --watch server.js",
+    "precheck": "node scripts/apply-shop-ranks.js",
     "check": "node --check server.js && node --check src/db.js"
   },
   "dependencies": {
