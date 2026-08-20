@@ -787,3 +787,35 @@ td small { color: var(--muted); margin-top: 3px; }
   height: 0 !important;
   overflow: hidden !important;
 }
+
+/* ===== Console Calagopus admin ===== */
+.admin-console-panel { overflow: hidden; }
+.console-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.console-server-select {
+  min-width: 180px; padding: 9px 34px 9px 11px; border: 1px solid var(--line); border-radius: 9px;
+  background: #0d0b11; color: #f4eff8; font: inherit; font-size: .82rem;
+}
+.console-connection.is-online { color: #baf7ce; border-color: rgba(61,207,112,.28); background: rgba(61,207,112,.08); }
+.console-connection.is-warn { color: #ffe4a6; border-color: rgba(240,183,66,.28); background: rgba(240,183,66,.08); }
+.console-connection.is-offline { color: #ffc0ca; border-color: rgba(255,92,116,.28); background: rgba(255,92,116,.08); }
+.console-server-stats { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 14px 0; }
+.console-server-stats > div { border: 1px solid var(--line-soft); background: #0e0c12; border-radius: 10px; padding: 10px 12px; display: grid; gap: 3px; }
+.console-server-stats span { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+.console-server-stats strong { font-size: .9rem; }
+.admin-console-output {
+  margin: 0; min-height: 360px; max-height: 560px; overflow: auto; padding: 16px; border: 1px solid rgba(142,89,235,.20);
+  border-radius: 10px; background: #070609; color: #d9d2df; font: 500 .78rem/1.55 Consolas, "Cascadia Code", monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4;
+}
+.admin-console-form { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin-top: 10px; }
+.console-prompt { color: #9d6cff; font: 800 1rem Consolas, monospace; }
+.admin-console-form input { width: 100%; min-width: 0; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--line); background: #0b0910; color: #fff; font: .84rem Consolas, monospace; }
+.console-power-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
+@media (max-width: 720px) {
+  .console-head-actions { justify-content: flex-start; width: 100%; }
+  .console-server-select { width: 100%; }
+  .console-server-stats { grid-template-columns: 1fr; }
+  .admin-console-output { min-height: 300px; max-height: 440px; }
+  .admin-console-form { grid-template-columns: auto 1fr; }
+  .admin-console-form .btn { grid-column: 1 / -1; }
+}

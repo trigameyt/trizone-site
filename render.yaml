@@ -13,7 +13,6 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
-
       - key: DISCORD_CLIENT_ID
         sync: false
       - key: DISCORD_CLIENT_SECRET
@@ -24,58 +23,53 @@ services:
         sync: false
       - key: DISCORD_GUILD_ID
         sync: false
-
-      - key: DISCORD_ROLE_DEFAULT_PLUS_ID
+      - key: DISCORD_ROLE_COPPER_ID
         sync: false
-      - key: DISCORD_ROLE_VIP_ID
+      - key: DISCORD_ROLE_IRON_ID
         sync: false
-      - key: DISCORD_ROLE_VIP_PLUS_ID
+      - key: DISCORD_ROLE_GOLD_ID
         sync: false
-      - key: DISCORD_ROLE_HERO_ID
+      - key: DISCORD_ROLE_DIAMOND_ID
         sync: false
-      - key: DISCORD_ROLE_EMPEROR_ID
+      - key: DISCORD_ROLE_NETHERITE_ID
         sync: false
-
       - key: ADMIN_DISCORD_IDS
         sync: false
-
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_SSL
         value: "true"
-
       - key: STRIPE_API_VERSION
         value: 2025-03-31.basil
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
-
-      - key: STRIPE_PRICE_DEFAULT_PLUS_ID
+      - key: STRIPE_PRICE_COPPER_ID
         sync: false
-      - key: STRIPE_PRICE_VIP_ID
+      - key: STRIPE_PRICE_IRON_ID
         sync: false
-      - key: STRIPE_PRICE_VIP_PLUS_ID
+      - key: STRIPE_PRICE_GOLD_ID
         sync: false
-      - key: STRIPE_PRICE_HERO_ID
+      - key: STRIPE_PRICE_DIAMOND_ID
         sync: false
-      - key: STRIPE_PRICE_EMPEROR_ID
+      - key: STRIPE_PRICE_NETHERITE_ID
         sync: false
-
       - key: MINECRAFT_LINK_SECRET
         sync: false
-
-      - key: PTERODACTYL_PANEL_URL
+      - key: CALAGOPUS_PANEL_URL
         sync: false
-      - key: PTERODACTYL_API_KEY
+      - key: CALAGOPUS_STATUS_API_KEY
         sync: false
-      - key: PTERODACTYL_PROXY_ID
+      - key: CALAGOPUS_ADMIN_API_KEY
         sync: false
-      - key: PTERODACTYL_WARZONE_ID
+      - key: CALAGOPUS_PROXY_ID
         sync: false
-      - key: PTERODACTYL_SPAWN_ID
+      - key: CALAGOPUS_WARZONE_ID
         sync: false
-      - key: PTERODACTYL_MINIGAME_ID
+      - key: CALAGOPUS_SPAWN_ID
         sync: false
-      - key: PTERODACTYL_AUTH_ID
+      - key: CALAGOPUS_MINIGAME_ID
+        sync: false
+      - key: CALAGOPUS_AUTH_ID
         sync: false

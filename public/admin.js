@@ -193,6 +193,179 @@ async function saveDuelKitOrder() {
   }
 }
 
+
+let adminServers = [];
+let consoleSource = null;
+let consoleLines = [];
+
+function formatAdminBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MiB';
+  const mib = bytes / 1024 / 1024;
+  return mib >= 1024 ? `${(mib / 1024).toFixed(2)} GiB` : `${mib.toFixed(mib >= 100 ? 0 : 1)} MiB`;
+}
+
+function setConsoleConnection(text, kind = '') {
+  const el = document.getElementById('console-connection');
+  if (!el) return;
+  el.textContent = text;
+  el.className = `badge console-connection ${kind}`.trim();
+}
+
+function appendConsoleLine(line) {
+  const terminal = document.getElementById('admin-console-output');
+  if (!terminal) return;
+  const clean = String(line || '').replace(/\r/g, '');
+  for (const part of clean.split('\n')) {
+    if (!part) continue;
+    consoleLines.push(part);
+  }
+  if (consoleLines.length > 500) consoleLines = consoleLines.slice(-500);
+  terminal.textContent = consoleLines.join('\n');
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function renderAdminServerPicker() {
+  const select = document.getElementById('console-server-select');
+  if (!select) return;
+  const previous = select.value;
+  select.innerHTML = adminServers.map((server) => `<option value="${Trizone.escapeHtml(server.id)}">${Trizone.escapeHtml(server.name)} — ${Trizone.escapeHtml(server.state_label || 'Inconnu')}</option>`).join('');
+  if (adminServers.some((server) => server.id === previous)) select.value = previous;
+}
+
+function renderAdminServerStats(server) {
+  const root = document.getElementById('console-server-stats');
+  if (!root) return;
+  if (!server) {
+    root.innerHTML = '<span class="muted">Aucun serveur sélectionné.</span>';
+    return;
+  }
+  const memory = server.memory_limit_bytes
+    ? `${formatAdminBytes(server.memory_bytes)} / ${formatAdminBytes(server.memory_limit_bytes)}`
+    : formatAdminBytes(server.memory_bytes);
+  root.innerHTML = `
+    <div><span>État</span><strong>${Trizone.escapeHtml(server.state_label || 'Inconnu')}</strong></div>
+    <div><span>CPU</span><strong>${Number(server.cpu_percent || 0).toFixed(1)}%</strong></div>
+    <div><span>RAM</span><strong>${Trizone.escapeHtml(memory)}</strong></div>`;
+}
+
+function closeAdminConsoleStream() {
+  if (consoleSource) {
+    consoleSource.close();
+    consoleSource = null;
+  }
+}
+
+function connectAdminConsole() {
+  closeAdminConsoleStream();
+  const select = document.getElementById('console-server-select');
+  const id = select?.value;
+  const server = adminServers.find((item) => item.id === id);
+  renderAdminServerStats(server);
+  consoleLines = [];
+  const terminal = document.getElementById('admin-console-output');
+  if (terminal) terminal.textContent = '';
+  if (!id) return;
+
+  setConsoleConnection('Connexion…', 'is-warn');
+  appendConsoleLine(`[Trizone] Connexion à la console ${server?.name || id}…`);
+  const source = new EventSource(`/api/admin/servers/${encodeURIComponent(id)}/console-stream`);
+  consoleSource = source;
+
+  source.addEventListener('console', (event) => {
+    try { appendConsoleLine(JSON.parse(event.data).line); } catch {}
+  });
+  source.addEventListener('state', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const connected = data.state === 'connected';
+      setConsoleConnection(data.label || data.state, connected ? 'is-online' : 'is-warn');
+    } catch {}
+  });
+  source.addEventListener('server-state', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const current = adminServers.find((item) => item.id === id);
+      if (current && data.state) {
+        current.raw_state = data.state;
+        current.state_label = data.state;
+        renderAdminServerStats(current);
+      }
+    } catch {}
+  });
+  source.addEventListener('stats', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      const current = adminServers.find((item) => item.id === id);
+      if (!current) return;
+      current.cpu_percent = Number(data.cpu_absolute ?? data.cpu_percent ?? current.cpu_percent ?? 0);
+      current.memory_bytes = Number(data.memory_bytes ?? data.memory ?? current.memory_bytes ?? 0);
+      renderAdminServerStats(current);
+    } catch {}
+  });
+  source.addEventListener('error', (event) => {
+    if (event?.data) {
+      try { appendConsoleLine(`[Trizone] ${JSON.parse(event.data).error}`); } catch {}
+    }
+    setConsoleConnection('Déconnectée', 'is-offline');
+  });
+  source.onerror = () => setConsoleConnection('Reconnexion…', 'is-warn');
+}
+
+async function loadAdminServers() {
+  const result = await Trizone.json('/api/admin/servers');
+  adminServers = result.data || [];
+  renderAdminServerPicker();
+  connectAdminConsole();
+}
+
+async function sendAdminCommand(event) {
+  event?.preventDefault();
+  const select = document.getElementById('console-server-select');
+  const input = document.getElementById('console-command-input');
+  const id = select?.value;
+  const command = String(input?.value || '').trim();
+  if (!id || !command) return;
+  input.disabled = true;
+  try {
+    await Trizone.json(`/api/admin/servers/${encodeURIComponent(id)}/command`, {
+      method: 'POST', body: JSON.stringify({ command }),
+    });
+    appendConsoleLine(`> ${command}`);
+    input.value = '';
+  } catch (error) {
+    Trizone.showToast(error.message, 'bad');
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+async function sendAdminPower(signal) {
+  const select = document.getElementById('console-server-select');
+  const id = select?.value;
+  if (!id) return;
+  const server = adminServers.find((item) => item.id === id);
+  const label = server?.name || id;
+  if ((signal === 'stop' || signal === 'restart') && !confirm(`${signal === 'stop' ? 'Arrêter' : 'Redémarrer'} ${label} ?`)) return;
+  try {
+    await Trizone.json(`/api/admin/servers/${encodeURIComponent(id)}/power`, {
+      method: 'POST', body: JSON.stringify({ signal }),
+    });
+    Trizone.showToast(`Action ${signal} envoyée à ${label}.`);
+    setTimeout(async () => {
+      try {
+        const result = await Trizone.json('/api/admin/servers');
+        adminServers = result.data || adminServers;
+        renderAdminServerPicker();
+        renderAdminServerStats(adminServers.find((item) => item.id === id));
+      } catch {}
+    }, 1800);
+  } catch (error) {
+    Trizone.showToast(error.message, 'bad');
+  }
+}
+
 async function loadAdminData(config) {
   const [stats, users, events, kitOrder] = await Promise.all([
     Trizone.json('/api/admin/stats'),
@@ -236,6 +409,25 @@ async function initAdmin() {
         <div id="stats" class="stats"><div class="skeleton"></div></div>
       </section>
 
+      <section class="panel admin-console-panel">
+        <div class="panel-head">
+          <div><h3>Console des serveurs</h3><p>Console Calagopus en direct. Les clés API restent uniquement côté serveur.</p></div>
+          <div class="console-head-actions"><select id="console-server-select" class="console-server-select" aria-label="Serveur"></select><span id="console-connection" class="badge console-connection">Déconnectée</span></div>
+        </div>
+        <div id="console-server-stats" class="console-server-stats"><span class="muted">Chargement…</span></div>
+        <pre id="admin-console-output" class="admin-console-output" aria-live="polite">Chargement de la console…</pre>
+        <form id="admin-console-form" class="admin-console-form">
+          <span class="console-prompt">&gt;</span>
+          <input id="console-command-input" type="text" maxlength="1000" autocomplete="off" spellcheck="false" placeholder="say Bonjour Trizone">
+          <button class="btn btn-primary btn-small" type="submit">Envoyer</button>
+        </form>
+        <div class="console-power-actions">
+          <button class="btn btn-quiet btn-small" type="button" data-power="start">Démarrer</button>
+          <button class="btn btn-quiet btn-small" type="button" data-power="restart">Redémarrer</button>
+          <button class="btn btn-danger btn-small" type="button" data-power="stop">Arrêter</button>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-head"><div><h3>Modifier le site</h3><p>Ces changements sont visibles directement sur l’accueil.</p></div></div>
         <div class="form-grid">${siteFields.map(fieldHtml).join('')}</div>
@@ -267,9 +459,13 @@ async function initAdmin() {
   document.getElementById('duel-kit-order-list').addEventListener('click', handleDuelKitOrderClick);
   document.getElementById('user-search').addEventListener('input', filterUsers);
   document.getElementById('users-body').addEventListener('click', handleUserAction);
+  document.getElementById('console-server-select').addEventListener('change', connectAdminConsole);
+  document.getElementById('admin-console-form').addEventListener('submit', sendAdminCommand);
+  document.querySelectorAll('[data-power]').forEach((button) => button.addEventListener('click', () => sendAdminPower(button.dataset.power)));
 
-  try { await loadAdminData(config); }
+  try { await loadAdminData(config); await loadAdminServers(); }
   catch (error) { root.insertAdjacentHTML('afterbegin', `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`); }
 }
 
+window.addEventListener('beforeunload', closeAdminConsoleStream);
 document.addEventListener('DOMContentLoaded', initAdmin);

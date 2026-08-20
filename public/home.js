@@ -69,7 +69,7 @@ function renderStatusBoard(data) {
         <div class="uptime-history-wrap">
           <div class="uptime-history">${renderHistory(service.history)}</div>
           <div class="uptime-history-labels">
-            <span>20 min</span>
+            <span>1 h</span>
             <span>Maintenant</span>
           </div>
         </div>

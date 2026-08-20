@@ -5,6 +5,7 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cookieSession = require('cookie-session');
+const WebSocket = require('ws');
 const { rateLimit } = require('express-rate-limit');
 const { pool, query, initDatabase } = require('./src/db');
 
@@ -29,7 +30,7 @@ const SITE_SETTINGS = {
   feature_3_text: { max: 350, fallback: 'Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.' },
   discord_invite_url: { max: 300, fallback: '' },
   status_title: { max: 80, fallback: 'État des serveurs Minecraft' },
-  status_description: { max: 220, fallback: 'Disponibilité du proxy et des serveurs Trizone sur les 20 dernières minutes.' },
+  status_description: { max: 220, fallback: 'Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.' },
   legal_operator_name: { max: 160, fallback: '' },
   legal_contact_address: { max: 350, fallback: '' },
   legal_contact_email: { max: 180, fallback: '' },
@@ -37,16 +38,22 @@ const SITE_SETTINGS = {
   legal_extra_terms: { max: 2500, fallback: '' },
 };
 
-const pterodactylCache = new Map();
+const calagopusCache = new Map();
 
-// Historique léger en mémoire pour le panneau Minecraft.
-// 60 points x 20 secondes = 20 minutes. L’historique repart à zéro à chaque redéploiement Render.
+// 60 points x 60 secondes = 60 minutes.
+// L'historique est gardé en mémoire et repart à zéro après un redéploiement Render.
 const STATUS_HISTORY_SIZE = 60;
+const STATUS_SAMPLE_INTERVAL_MS = 60_000;
 const statusHistory = new Map();
+let lastStatusSampleAt = 0;
+let statusSamplePromise = null;
+let latestStatusBoard = null;
 
 function pushStatusSample(id, state) {
   const safeState = ['up', 'warn', 'down'].includes(state) ? state : 'down';
   let history = statusHistory.get(id);
+  // Au premier échantillon on remplit la fenêtre avec l'état actuel afin d'éviter
+  // d'afficher artificiellement 1,67 % juste après un redéploiement.
   if (!history) history = Array(STATUS_HISTORY_SIZE - 1).fill(safeState);
   history.push(safeState);
   if (history.length > STATUS_HISTORY_SIZE) history = history.slice(-STATUS_HISTORY_SIZE);
@@ -60,14 +67,6 @@ function uptimePercent(history) {
   return Math.round((available / history.length) * 10000) / 100;
 }
 
-function formatBytes(bytes) {
-  const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) return '0 MiB';
-  const mib = value / 1024 / 1024;
-  if (mib >= 1024) return `${(mib / 1024).toFixed(2)} GiB`;
-  return `${mib.toFixed(mib >= 100 ? 0 : 1)} MiB`;
-}
-
 function formatDuration(ms) {
   const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
   const days = Math.floor(totalSeconds / 86400);
@@ -78,10 +77,13 @@ function formatDuration(ms) {
   return `${minutes} min`;
 }
 
-function pterodactylBaseConfig() {
+function calagopusConfig(kind = 'status') {
+  const panelUrl = String(process.env.CALAGOPUS_PANEL_URL || '').trim().replace(/\/$/, '');
+  const statusKey = String(process.env.CALAGOPUS_STATUS_API_KEY || '').trim();
+  const adminKey = String(process.env.CALAGOPUS_ADMIN_API_KEY || '').trim();
   return {
-    panelUrl: String(process.env.PTERODACTYL_PANEL_URL || '').trim().replace(/\/$/, ''),
-    apiKey: String(process.env.PTERODACTYL_API_KEY || '').trim(),
+    panelUrl,
+    apiKey: kind === 'admin' ? adminKey : (statusKey || adminKey),
   };
 }
 
@@ -90,94 +92,198 @@ function minecraftServerConfigs() {
     {
       id: 'proxy',
       label: 'Proxy',
-      serverId: String(process.env.PTERODACTYL_PROXY_ID || process.env.PTERODACTYL_SERVER_ID || '').trim(),
+      serverId: String(process.env.CALAGOPUS_PROXY_ID || '').trim(),
       description: 'Point d’entrée Velocity du réseau Trizone.',
     },
     {
       id: 'warzone',
       label: 'Warzone',
-      serverId: String(process.env.PTERODACTYL_WARZONE_ID || '').trim(),
+      serverId: String(process.env.CALAGOPUS_WARZONE_ID || '').trim(),
       description: 'Serveur PvP / Warzone.',
     },
     {
       id: 'spawn',
       label: 'Spawn',
-      serverId: String(process.env.PTERODACTYL_SPAWN_ID || '').trim(),
+      serverId: String(process.env.CALAGOPUS_SPAWN_ID || '').trim(),
       description: 'Lobby et spawn principal.',
     },
     {
       id: 'minigame',
       label: 'Minigame',
-      serverId: String(process.env.PTERODACTYL_MINIGAME_ID || '').trim(),
+      serverId: String(process.env.CALAGOPUS_MINIGAME_ID || '').trim(),
       description: 'Serveur de mini-jeux.',
     },
     {
       id: 'auth',
       label: 'Auth',
-      serverId: String(process.env.PTERODACTYL_AUTH_ID || '').trim(),
+      serverId: String(process.env.CALAGOPUS_AUTH_ID || '').trim(),
       description: 'Serveur d’authentification.',
     },
   ];
 }
 
-async function readPterodactylStatus(serverId, label = 'Serveur') {
-  const cfg = pterodactylBaseConfig();
-  if (!cfg.panelUrl || !cfg.apiKey || !serverId) return { configured: false, label };
+function findMinecraftServer(id) {
+  return minecraftServerConfigs().find((server) => server.id === String(id || '').toLowerCase()) || null;
+}
 
-  const cacheKey = String(serverId);
-  const now = Date.now();
-  const cached = pterodactylCache.get(cacheKey);
-  if (cached && now - cached.at < 10_000) return cached.data;
-
+function calagopusHeaders(apiKey, json = false) {
   const headers = {
-    Authorization: `Bearer ${cfg.apiKey}`,
-    Accept: 'Application/vnd.pterodactyl.v1+json',
+    Authorization: `Bearer ${apiKey}`,
+    Accept: 'application/json',
   };
+  if (json) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+function apiAttributes(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  if (payload.attributes && typeof payload.attributes === 'object') return payload.attributes;
+  if (payload.data?.attributes && typeof payload.data.attributes === 'object') return payload.data.attributes;
+  if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) return payload.data;
+  return payload;
+}
+
+async function calagopusRequest(pathname, { kind = 'status', method = 'GET', body, timeout = 7000 } = {}) {
+  const cfg = calagopusConfig(kind);
+  if (!cfg.panelUrl || !cfg.apiKey) {
+    const error = new Error(`Calagopus ${kind} non configuré dans Render.`);
+    error.code = 'CALAGOPUS_NOT_CONFIGURED';
+    throw error;
+  }
+
+  const response = await fetch(`${cfg.panelUrl}${pathname}`, {
+    method,
+    headers: calagopusHeaders(cfg.apiKey, body !== undefined),
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeout),
+  });
+
+  const text = await response.text();
+  let data = {};
+  if (text) {
+    try { data = JSON.parse(text); }
+    catch { data = { raw: text.slice(0, 1000) }; }
+  }
+
+  if (!response.ok) {
+    const message = data?.errors?.[0]?.detail || data?.error || data?.message || `HTTP ${response.status}`;
+    const error = new Error(`Calagopus ${response.status}: ${message}`);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+async function readCalagopusStatus(serverId, label = 'Serveur', { kind = 'status', noCache = false } = {}) {
+  if (!serverId) return { configured: false, label };
+  const cfg = calagopusConfig(kind);
+  if (!cfg.panelUrl || !cfg.apiKey) return { configured: false, label };
+
+  const cacheKey = `${kind}:${serverId}`;
+  const now = Date.now();
+  const cached = calagopusCache.get(cacheKey);
+  if (!noCache && cached && now - cached.at < 10_000) return cached.data;
+
   const id = encodeURIComponent(serverId);
-  const [resourceResponse, serverResponse] = await Promise.all([
-    fetch(`${cfg.panelUrl}/api/client/servers/${id}/resources`, { headers, signal: AbortSignal.timeout(6500) }),
-    fetch(`${cfg.panelUrl}/api/client/servers/${id}`, { headers, signal: AbortSignal.timeout(6500) }),
+  const [resourceResult, serverResult] = await Promise.allSettled([
+    calagopusRequest(`/api/client/servers/${id}/resources`, { kind }),
+    calagopusRequest(`/api/client/servers/${id}`, { kind }),
   ]);
 
-  if (!resourceResponse.ok) throw new Error(`Pterodactyl resources HTTP ${resourceResponse.status}`);
-  const json = await resourceResponse.json();
-  const serverJson = serverResponse.ok ? await serverResponse.json() : {};
-  const attr = json?.attributes || {};
-  const serverAttr = serverJson?.attributes || {};
-  const resources = attr.resources || {};
-  const memoryLimitMb = Number(serverAttr?.limits?.memory || 0);
+  if (resourceResult.status === 'rejected') throw resourceResult.reason;
+
+  const attr = apiAttributes(resourceResult.value);
+  const serverAttr = serverResult.status === 'fulfilled' ? apiAttributes(serverResult.value) : {};
+  const resources = attr.resources && typeof attr.resources === 'object' ? attr.resources : (attr.utilization || {});
+  const limits = serverAttr.limits || serverAttr.resources?.limits || {};
+  const memoryLimitMb = Number(limits.memory || limits.memory_mb || 0);
+
   const data = {
     configured: true,
     available: true,
     label,
-    state: String(attr.current_state || 'unknown'),
-    suspended: Boolean(attr.is_suspended),
-    uptime_ms: Number(resources.uptime || 0),
-    cpu_percent: Number(resources.cpu_absolute || 0),
-    memory_bytes: Number(resources.memory_bytes || 0),
+    state: String(attr.current_state || attr.state || attr.status || 'unknown'),
+    suspended: Boolean(attr.is_suspended ?? serverAttr.is_suspended ?? serverAttr.suspended),
+    uptime_ms: Number(resources.uptime || attr.uptime || 0),
+    cpu_percent: Number(resources.cpu_absolute ?? resources.cpu_percent ?? 0),
+    memory_bytes: Number(resources.memory_bytes ?? resources.memory ?? 0),
     memory_limit_bytes: memoryLimitMb > 0 ? memoryLimitMb * 1024 * 1024 : 0,
-    disk_bytes: Number(resources.disk_bytes || 0),
-    network_rx_bytes: Number(resources.network_rx_bytes || 0),
-    network_tx_bytes: Number(resources.network_tx_bytes || 0),
+    disk_bytes: Number(resources.disk_bytes ?? resources.disk ?? 0),
+    network_rx_bytes: Number(resources.network_rx_bytes ?? resources.network_rx ?? 0),
+    network_tx_bytes: Number(resources.network_tx_bytes ?? resources.network_tx ?? 0),
     updated_at: new Date().toISOString(),
   };
-  pterodactylCache.set(cacheKey, { at: now, data });
+
+  calagopusCache.set(cacheKey, { at: now, data });
   return data;
 }
 
-function stateFromPterodactyl(status, options = {}) {
+function stateFromCalagopus(status, options = {}) {
   if (!status?.configured) return { state: 'warn', label: 'À configurer' };
   if (!status?.available || status?.suspended) {
     return { state: 'down', label: status?.suspended ? 'Suspendu' : 'Hors ligne' };
   }
   const current = String(status.state || '').toLowerCase();
-  if (current === 'running') return { state: 'up', label: 'En ligne' };
+  if (current === 'running' || current === 'online') return { state: 'up', label: 'En ligne' };
   if (current === 'starting') {
     if (options.treatStartingAsOnline) return { state: 'up', label: 'En ligne' };
     return { state: 'warn', label: 'Démarrage' };
   }
   if (current === 'stopping') return { state: 'warn', label: 'Arrêt en cours' };
+  if (current === 'installing' || current === 'restoring_backup') return { state: 'warn', label: 'Maintenance' };
   return { state: 'down', label: 'Hors ligne' };
+}
+
+async function sampleCalagopusStatuses() {
+  if (statusSamplePromise) return statusSamplePromise;
+  statusSamplePromise = (async () => {
+    const now = new Date().toISOString();
+    const services = [];
+
+    for (const server of minecraftServerConfigs()) {
+      let state = 'warn';
+      let stateLabel = 'À configurer';
+      let meta = 'Ajoute son ID Calagopus dans Render';
+
+      try {
+        const status = await readCalagopusStatus(server.serverId, server.label, { noCache: true });
+        const mapped = stateFromCalagopus(status, { treatStartingAsOnline: server.id === 'proxy' });
+        state = mapped.state;
+        stateLabel = mapped.label;
+        if (status.configured) meta = `Uptime ${formatDuration(status.uptime_ms)}`;
+      } catch (error) {
+        state = 'down';
+        stateLabel = 'Indisponible';
+        meta = 'Impossible de joindre Calagopus';
+        console.warn(`[status-board] ${server.id}:`, error.message);
+      }
+
+      const history = pushStatusSample(`mc-${server.id}`, state);
+      services.push({
+        id: server.id,
+        name: server.label,
+        description: server.description,
+        state,
+        state_label: stateLabel,
+        uptime_percent: uptimePercent(history),
+        configured: Boolean(server.serverId),
+        history,
+        meta,
+      });
+    }
+
+    latestStatusBoard = { window_minutes: 60, updated_at: now, services };
+    lastStatusSampleAt = Date.now();
+    return latestStatusBoard;
+  })().finally(() => { statusSamplePromise = null; });
+  return statusSamplePromise;
+}
+
+async function getFreshStatusBoard() {
+  if (!latestStatusBoard || Date.now() - lastStatusSampleAt >= STATUS_SAMPLE_INTERVAL_MS) {
+    return sampleCalagopusStatuses();
+  }
+  return latestStatusBoard;
 }
 
 app.set('trust proxy', 1);
@@ -843,6 +949,9 @@ async function getCurrentUser(discordId) {
 async function getSiteConfig() {
   const result = await query('SELECT key, value FROM site_settings');
   const saved = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+  if (saved.status_description === 'Disponibilité du proxy et des serveurs Trizone sur les 20 dernières minutes.') {
+    saved.status_description = 'Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.';
+  }
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
@@ -854,7 +963,7 @@ app.get('/api/server-status', async (_req, res) => {
   const address = config.server_address || 'play.trizone.club';
   const proxy = minecraftServerConfigs()[0];
   try {
-    const status = await readPterodactylStatus(proxy.serverId, proxy.label);
+    const status = await readCalagopusStatus(proxy.serverId, proxy.label);
     if (!status.configured) {
       return res.json({ configured: false, available: false, label: proxy.label, address });
     }
@@ -866,46 +975,12 @@ app.get('/api/server-status', async (_req, res) => {
 });
 
 app.get('/api/status-board', async (_req, res) => {
-  const now = new Date().toISOString();
-  const services = [];
-
-  for (const server of minecraftServerConfigs()) {
-    let state = 'warn';
-    let stateLabel = 'À configurer';
-    let meta = 'Ajoute son ID Pterodactyl dans Render';
-
-    try {
-      const ptero = await readPterodactylStatus(server.serverId, server.label);
-      const mapped = stateFromPterodactyl(ptero, { treatStartingAsOnline: server.id === 'proxy' });
-      state = mapped.state;
-      stateLabel = mapped.label;
-
-      if (ptero.configured) {
-        const uptime = formatDuration(ptero.uptime_ms);
-        meta = `Uptime ${uptime}`;
-      }
-    } catch (error) {
-      state = 'down';
-      stateLabel = 'Indisponible';
-      meta = 'Impossible de joindre Pterodactyl';
-      console.warn(`[status-board] ${server.id}:`, error.message);
-    }
-
-    const history = pushStatusSample(`mc-${server.id}`, state);
-    services.push({
-      id: server.id,
-      name: server.label,
-      description: server.description,
-      state,
-      state_label: stateLabel,
-      uptime_percent: uptimePercent(history),
-      configured: Boolean(server.serverId),
-      history,
-      meta,
-    });
+  try {
+    res.json(await getFreshStatusBoard());
+  } catch (error) {
+    console.warn('[status-board]', error.message);
+    res.status(503).json({ error: 'Impossible de récupérer le statut Calagopus.' });
   }
-
-  res.json({ window_minutes: 20, updated_at: now, services });
 });
 
 app.get('/auth/discord', sensitiveLimiter, (req, res) => {
@@ -1810,6 +1885,152 @@ app.delete('/api/admin/users/:discordId/minecraft', requireAdmin, sensitiveLimit
   res.json({ ok: true });
 });
 
+function sanitizeConsoleLine(value) {
+  return String(value ?? '').replace(/\u001b\[[0-?]*[ -\/]*[@-~]/g, '').slice(0, 12000);
+}
+
+function consoleSseSend(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+app.get('/api/admin/servers', requireAdmin, async (_req, res) => {
+  const servers = [];
+  for (const server of minecraftServerConfigs()) {
+    try {
+      const status = await readCalagopusStatus(server.serverId, server.label, { kind: 'admin' });
+      const mapped = stateFromCalagopus(status, { treatStartingAsOnline: server.id === 'proxy' });
+      servers.push({
+        id: server.id,
+        name: server.label,
+        description: server.description,
+        configured: status.configured,
+        state: mapped.state,
+        state_label: mapped.label,
+        raw_state: status.state,
+        cpu_percent: status.cpu_percent,
+        memory_bytes: status.memory_bytes,
+        memory_limit_bytes: status.memory_limit_bytes,
+        uptime_ms: status.uptime_ms,
+      });
+    } catch (error) {
+      servers.push({ id: server.id, name: server.label, description: server.description, configured: Boolean(server.serverId), state: 'down', state_label: 'Indisponible', error: error.message });
+    }
+  }
+  res.json({ data: servers });
+});
+
+app.post('/api/admin/servers/:id/command', requireAdmin, sensitiveLimiter, async (req, res) => {
+  const server = findMinecraftServer(req.params.id);
+  if (!server || !server.serverId) return res.status(404).json({ error: 'Serveur Calagopus introuvable.' });
+  const command = String(req.body?.command || '').trim();
+  if (!command || command.length > 1000 || /[\r\n\0]/.test(command)) return res.status(400).json({ error: 'Commande invalide.' });
+  try {
+    await calagopusRequest(`/api/client/servers/${encodeURIComponent(server.serverId)}/command`, {
+      kind: 'admin', method: 'POST', body: { command },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(`[Calagopus command] ${server.id}:`, error.message);
+    res.status(error.status || 502).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/servers/:id/power', requireAdmin, sensitiveLimiter, async (req, res) => {
+  const server = findMinecraftServer(req.params.id);
+  if (!server || !server.serverId) return res.status(404).json({ error: 'Serveur Calagopus introuvable.' });
+  const signal = String(req.body?.signal || '').toLowerCase();
+  if (!['start', 'stop', 'restart'].includes(signal)) return res.status(400).json({ error: 'Action invalide.' });
+  try {
+    await calagopusRequest(`/api/client/servers/${encodeURIComponent(server.serverId)}/power`, {
+      kind: 'admin', method: 'POST', body: { signal },
+    });
+    calagopusCache.delete(`admin:${server.serverId}`);
+    calagopusCache.delete(`status:${server.serverId}`);
+    res.json({ ok: true, signal });
+  } catch (error) {
+    console.error(`[Calagopus power] ${server.id}:`, error.message);
+    res.status(error.status || 502).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/servers/:id/console-stream', requireAdmin, async (req, res) => {
+  const server = findMinecraftServer(req.params.id);
+  if (!server || !server.serverId) return res.status(404).json({ error: 'Serveur Calagopus introuvable.' });
+
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  consoleSseSend(res, 'state', { state: 'connecting', label: 'Connexion à Calagopus…' });
+
+  let socket = null;
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(heartbeat);
+    if (socket) {
+      try { socket.close(); } catch {}
+    }
+  };
+
+  const heartbeat = setInterval(() => {
+    if (!closed) res.write(': ping\n\n');
+  }, 20_000);
+  res.on('close', cleanup);
+
+  try {
+    const wsPayload = await calagopusRequest(`/api/client/servers/${encodeURIComponent(server.serverId)}/websocket`, { kind: 'admin' });
+    const data = wsPayload?.data?.attributes || wsPayload?.data || wsPayload?.attributes || wsPayload || {};
+    const token = String(data.token || '');
+    const socketUrl = String(data.socket || data.url || '');
+    if (!token || !/^wss?:\/\//i.test(socketUrl)) throw new Error('Calagopus n’a pas renvoyé de WebSocket valide.');
+
+    socket = new WebSocket(socketUrl, { handshakeTimeout: 7000 });
+    socket.on('open', () => {
+      socket.send(JSON.stringify({ event: 'auth', args: [token] }));
+      consoleSseSend(res, 'state', { state: 'connected', label: `Console ${server.label} connectée` });
+    });
+    socket.on('message', (raw) => {
+      let message;
+      try { message = JSON.parse(raw.toString()); } catch { return; }
+      const event = String(message?.event || '');
+      const args = Array.isArray(message?.args) ? message.args : [];
+      if (event === 'console output') {
+        for (const line of args) consoleSseSend(res, 'console', { line: sanitizeConsoleLine(line) });
+      } else if (event === 'status') {
+        consoleSseSend(res, 'server-state', { state: String(args[0] || '') });
+      } else if (event === 'stats') {
+        try {
+          const stats = typeof args[0] === 'string' ? JSON.parse(args[0]) : args[0];
+          consoleSseSend(res, 'stats', stats || {});
+        } catch {}
+      } else if (event === 'token expiring' || event === 'token expired') {
+        consoleSseSend(res, 'state', { state: 'reconnecting', label: 'Renouvellement de la console…' });
+      }
+    });
+    socket.on('error', (error) => {
+      if (!closed) consoleSseSend(res, 'error', { error: error.message || 'Erreur WebSocket Calagopus.' });
+    });
+    socket.on('close', () => {
+      if (!closed) {
+        consoleSseSend(res, 'state', { state: 'closed', label: 'Console déconnectée' });
+        res.end();
+      }
+      cleanup();
+    });
+  } catch (error) {
+    console.error(`[Calagopus console] ${server.id}:`, error.message);
+    if (!closed) {
+      consoleSseSend(res, 'error', { error: error.message });
+      res.end();
+    }
+    cleanup();
+  }
+});
+
 app.get('/api/admin/events', requireAdmin, async (_req, res) => {
   const result = await query(
     `SELECT event_id AS webhook_id, type, event_created_at AS event_date,
@@ -1885,7 +2106,11 @@ app.use((req, res) => {
 });
 
 initDatabase()
-  .then(() => app.listen(PORT, () => console.log(`Trizone site v2.8 lancé sur ${BASE_URL} (port ${PORT})`)))
+  .then(() => app.listen(PORT, () => {
+    console.log(`Trizone site Calagopus lancé sur ${BASE_URL} (port ${PORT})`);
+    sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message));
+    setInterval(() => sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message)), STATUS_SAMPLE_INTERVAL_MS).unref();
+  }))
   .catch((error) => {
     console.error('Impossible d’initialiser la base de données:', error);
     process.exit(1);
