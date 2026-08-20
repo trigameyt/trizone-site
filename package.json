@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "private": true,
-  "description": "Site officiel Trizone v3.3.0 : Calagopus status 1h, console admin sécurisée, duels, Discord OAuth et boutique.",
+  "description": "Site officiel Trizone v3.3.1 : Calagopus status 1h, console admin sécurisée, duels, Discord OAuth et boutique.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

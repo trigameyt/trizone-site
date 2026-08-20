@@ -192,25 +192,53 @@ async function readCalagopusStatus(serverId, label = 'Serveur', { kind = 'status
 
   if (resourceResult.status === 'rejected') throw resourceResult.reason;
 
+  // Calagopus n'utilise pas exactement l'ancien format Pterodactyl.
+  // /resources renvoie principalement un objet `resources` dont `state` fait
+  // partie des ressources elles-mêmes. On accepte aussi l'ancien format afin
+  // de rester compatible avec les installations/proxys qui le transforment.
   const attr = apiAttributes(resourceResult.value);
-  const serverAttr = serverResult.status === 'fulfilled' ? apiAttributes(serverResult.value) : {};
-  const resources = attr.resources && typeof attr.resources === 'object' ? attr.resources : (attr.utilization || {});
+  const rawServerAttr = serverResult.status === 'fulfilled' ? apiAttributes(serverResult.value) : {};
+  const serverAttr = rawServerAttr.server && typeof rawServerAttr.server === 'object'
+    ? rawServerAttr.server
+    : rawServerAttr;
+  const resources = attr.resources && typeof attr.resources === 'object'
+    ? attr.resources
+    : (attr.utilization && typeof attr.utilization === 'object' ? attr.utilization : attr);
+  const network = resources.network && typeof resources.network === 'object' ? resources.network : {};
   const limits = serverAttr.limits || serverAttr.resources?.limits || {};
   const memoryLimitMb = Number(limits.memory || limits.memory_mb || 0);
+  const explicitMemoryLimitBytes = Number(resources.memory_limit_bytes ?? attr.memory_limit_bytes ?? 0);
+
+  const rawState =
+    resources.current_state ?? resources.state ?? resources.status ??
+    attr.current_state ?? attr.state ?? attr.status ??
+    serverAttr.current_state ?? serverAttr.state ?? serverAttr.status ??
+    'unknown';
 
   const data = {
     configured: true,
     available: true,
     label,
-    state: String(attr.current_state || attr.state || attr.status || 'unknown'),
-    suspended: Boolean(attr.is_suspended ?? serverAttr.is_suspended ?? serverAttr.suspended),
-    uptime_ms: Number(resources.uptime || attr.uptime || 0),
-    cpu_percent: Number(resources.cpu_absolute ?? resources.cpu_percent ?? 0),
-    memory_bytes: Number(resources.memory_bytes ?? resources.memory ?? 0),
-    memory_limit_bytes: memoryLimitMb > 0 ? memoryLimitMb * 1024 * 1024 : 0,
-    disk_bytes: Number(resources.disk_bytes ?? resources.disk ?? 0),
-    network_rx_bytes: Number(resources.network_rx_bytes ?? resources.network_rx ?? 0),
-    network_tx_bytes: Number(resources.network_tx_bytes ?? resources.network_tx ?? 0),
+    state: String(rawState),
+    suspended: Boolean(
+      resources.is_suspended ?? attr.is_suspended ??
+      serverAttr.is_suspended ?? serverAttr.suspended ?? false
+    ),
+    uptime_ms: Number(resources.uptime ?? attr.uptime ?? 0),
+    cpu_percent: Number(resources.cpu_absolute ?? resources.cpu_percent ?? attr.cpu_absolute ?? 0),
+    memory_bytes: Number(resources.memory_bytes ?? resources.memory ?? attr.memory_bytes ?? 0),
+    memory_limit_bytes: explicitMemoryLimitBytes > 0
+      ? explicitMemoryLimitBytes
+      : (memoryLimitMb > 0 ? memoryLimitMb * 1024 * 1024 : 0),
+    disk_bytes: Number(resources.disk_bytes ?? resources.disk ?? attr.disk_bytes ?? 0),
+    network_rx_bytes: Number(
+      resources.network_rx_bytes ?? resources.network_rx ??
+      network.rx_bytes ?? network.rx ?? attr.network_rx_bytes ?? 0
+    ),
+    network_tx_bytes: Number(
+      resources.network_tx_bytes ?? resources.network_tx ??
+      network.tx_bytes ?? network.tx ?? attr.network_tx_bytes ?? 0
+    ),
     updated_at: new Date().toISOString(),
   };
 
@@ -955,7 +983,7 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.1.2' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.1' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};

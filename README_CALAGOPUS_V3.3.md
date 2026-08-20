@@ -31,3 +31,8 @@ Les anciennes variables `PTERODACTYL_*` ne sont plus utilisées par cette versio
 - commandes, démarrage, arrêt et redémarrage sont protégés par `ADMIN_DISCORD_IDS`.
 
 Après déploiement, ouvre **Administration > Console des serveurs**.
+
+
+## Correctif v3.3.1
+
+Le endpoint Calagopus `/resources` place l'état (`state`) directement dans l'objet `resources`, contrairement au format historique Pterodactyl qui utilisait `current_state` dans `attributes`. Le parseur accepte maintenant les deux formats, ainsi que le réseau imbriqué (`network.rx_bytes` / `network.tx_bytes`) et `memory_limit_bytes`.
