@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.3",
+  "version": "3.3.4",
   "private": true,
-  "description": "Site officiel Trizone v3.3.3 : correctifs sécurité + restauration boutique VIP Stripe + Calagopus.",
+  "description": "Site officiel Trizone v3.3.4 : sécurité, compatibilité TLS PostgreSQL Render et variables Stripe anciennes/nouvelles.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

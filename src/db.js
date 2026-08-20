@@ -16,12 +16,21 @@ function readDatabaseCa() {
 function databaseSslConfig() {
   if (!sslEnabled) return false;
 
-  const rejectUnauthorized = String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
   const ca = readDatabaseCa();
+  const explicitReject = String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || '').trim().toLowerCase();
+
+  // Certains fournisseurs PostgreSQL utilisés derrière Render présentent une chaîne
+  // contenant un certificat auto-signé. Sans CA fournie explicitement, pg ne peut
+  // pas valider cette chaîne. On garde donc TLS actif mais on n'impose la validation
+  // du certificat que lorsqu'une CA est fournie (ou si l'admin l'active explicitement).
+  const rejectUnauthorized = explicitReject
+    ? explicitReject !== 'false'
+    : Boolean(ca);
+
   const ssl = ca ? { rejectUnauthorized, ca } : { rejectUnauthorized };
 
   if (!rejectUnauthorized) {
-    console.warn('[security] DATABASE_SSL_REJECT_UNAUTHORIZED=false : TLS PostgreSQL actif sans validation du certificat.');
+    console.warn('[security] PostgreSQL TLS actif, validation du certificat désactivée (aucune CA configurée).');
   }
 
   return ssl;

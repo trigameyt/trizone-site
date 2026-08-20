@@ -42,7 +42,7 @@ services:
       - key: DATABASE_SSL
         value: "true"
       - key: DATABASE_SSL_REJECT_UNAUTHORIZED
-        value: "true"
+        value: "false"
       - key: DATABASE_SSL_CA
         sync: false
       - key: STRIPE_API_VERSION
@@ -62,6 +62,17 @@ services:
       - key: STRIPE_PRICE_EMPEROR_ID
         sync: false
       - key: STRIPE_PRICE_IMPERATOR_ID
+        sync: false
+      # Compatibilité avec les anciennes variables de boutique (optionnel)
+      - key: STRIPE_PRICE_COPPER_ID
+        sync: false
+      - key: STRIPE_PRICE_IRON_ID
+        sync: false
+      - key: STRIPE_PRICE_GOLD_ID
+        sync: false
+      - key: STRIPE_PRICE_DIAMOND_ID
+        sync: false
+      - key: STRIPE_PRICE_NETHERITE_ID
         sync: false
       - key: MINECRAFT_LINK_SECRET
         sync: false

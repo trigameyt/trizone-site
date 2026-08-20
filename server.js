@@ -384,26 +384,50 @@ function safeEqualHex(a, b) {
 
 const PAID_RANK_ORDER = ['default_plus', 'vip', 'vip_plus', 'hero', 'emperor'];
 
+// Compatibilité avec les deux générations de variables Render.
+// Anciennes clés : Copper / Iron / Gold / Diamond / Netherite.
+// Nouvelles clés : Default+ / VIP / VIP+ / Hero / Emperor (ou Imperator).
+const PAID_RANK_ENV_ALIASES = {
+  default_plus: { price: ['STRIPE_PRICE_DEFAULT_PLUS_ID', 'STRIPE_PRICE_COPPER_ID'], role: ['DISCORD_ROLE_DEFAULT_PLUS_ID', 'DISCORD_ROLE_COPPER_ID'] },
+  vip:          { price: ['STRIPE_PRICE_VIP_ID', 'STRIPE_PRICE_IRON_ID'], role: ['DISCORD_ROLE_VIP_ID', 'DISCORD_ROLE_IRON_ID'] },
+  vip_plus:     { price: ['STRIPE_PRICE_VIP_PLUS_ID', 'STRIPE_PRICE_GOLD_ID'], role: ['DISCORD_ROLE_VIP_PLUS_ID', 'DISCORD_ROLE_GOLD_ID'] },
+  hero:         { price: ['STRIPE_PRICE_HERO_ID', 'STRIPE_PRICE_DIAMOND_ID'], role: ['DISCORD_ROLE_HERO_ID', 'DISCORD_ROLE_DIAMOND_ID'] },
+  emperor:      { price: ['STRIPE_PRICE_EMPEROR_ID', 'STRIPE_PRICE_IMPERATOR_ID', 'STRIPE_PRICE_NETHERITE_ID'], role: ['DISCORD_ROLE_EMPEROR_ID', 'DISCORD_ROLE_IMPERATOR_ID', 'DISCORD_ROLE_NETHERITE_ID'] },
+};
+
+function firstConfiguredEnv(names = []) {
+  for (const name of names) {
+    const value = String(process.env[name] || '').trim();
+    if (value) return { value, name };
+  }
+  return { value: '', name: '' };
+}
+
 function paidRankConfig() {
   return PAID_RANK_ORDER.map((key, index) => {
-    const envKey = key.toUpperCase();
-    // Compatibilité : le dernier grade a été nommé Emperor puis Imperator.
-    // On accepte les deux noms de variable Render sans changer la clé interne
-    // `emperor`, afin de ne pas casser les commandes/livraisons déjà enregistrées.
-    const priceId = key === 'emperor'
-      ? (process.env.STRIPE_PRICE_EMPEROR_ID || process.env.STRIPE_PRICE_IMPERATOR_ID || '')
-      : (process.env[`STRIPE_PRICE_${envKey}_ID`] || '');
-    const roleId = key === 'emperor'
-      ? (process.env.DISCORD_ROLE_EMPEROR_ID || process.env.DISCORD_ROLE_IMPERATOR_ID || '')
-      : (process.env[`DISCORD_ROLE_${envKey}_ID`] || '');
+    const aliases = PAID_RANK_ENV_ALIASES[key] || { price: [], role: [] };
+    const price = firstConfiguredEnv(aliases.price);
+    const role = firstConfiguredEnv(aliases.role);
 
     return {
       key,
       priority: index + 1,
-      priceId: String(priceId).trim(),
-      roleId: String(roleId).trim(),
+      priceId: price.value,
+      roleId: role.value,
+      priceEnvName: price.name,
+      roleEnvName: role.name,
     };
   });
+}
+
+function logShopEnvironmentStatus() {
+  const ranks = paidRankConfig();
+  const configured = ranks.filter((rank) => rank.priceId);
+  if (!configured.length) {
+    console.warn('[Stripe config] Aucun Price ID trouvé. Vérifie les variables STRIPE_PRICE_*_ID dans Render.');
+    return;
+  }
+  console.log('[Stripe config] Price IDs détectés pour : ' + configured.map((rank) => `${rank.key} (${rank.priceEnvName})`).join(', '));
 }
 
 function paidRankByKey(key) {
@@ -2168,6 +2192,7 @@ app.use((req, res) => {
 initDatabase()
   .then(() => app.listen(PORT, () => {
     console.log(`Trizone site Calagopus lancé sur ${BASE_URL} (port ${PORT})`);
+    logShopEnvironmentStatus();
     sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message));
     setInterval(() => sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message)), STATUS_SAMPLE_INTERVAL_MS).unref();
   }))
