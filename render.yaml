@@ -23,15 +23,17 @@ services:
         sync: false
       - key: DISCORD_GUILD_ID
         sync: false
-      - key: DISCORD_ROLE_COPPER_ID
+      - key: DISCORD_ROLE_DEFAULT_PLUS_ID
         sync: false
-      - key: DISCORD_ROLE_IRON_ID
+      - key: DISCORD_ROLE_VIP_ID
         sync: false
-      - key: DISCORD_ROLE_GOLD_ID
+      - key: DISCORD_ROLE_VIP_PLUS_ID
         sync: false
-      - key: DISCORD_ROLE_DIAMOND_ID
+      - key: DISCORD_ROLE_HERO_ID
         sync: false
-      - key: DISCORD_ROLE_NETHERITE_ID
+      - key: DISCORD_ROLE_EMPEROR_ID
+        sync: false
+      - key: DISCORD_ROLE_IMPERATOR_ID
         sync: false
       - key: ADMIN_DISCORD_IDS
         sync: false
@@ -49,15 +51,17 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
-      - key: STRIPE_PRICE_COPPER_ID
+      - key: STRIPE_PRICE_DEFAULT_PLUS_ID
         sync: false
-      - key: STRIPE_PRICE_IRON_ID
+      - key: STRIPE_PRICE_VIP_ID
         sync: false
-      - key: STRIPE_PRICE_GOLD_ID
+      - key: STRIPE_PRICE_VIP_PLUS_ID
         sync: false
-      - key: STRIPE_PRICE_DIAMOND_ID
+      - key: STRIPE_PRICE_HERO_ID
         sync: false
-      - key: STRIPE_PRICE_NETHERITE_ID
+      - key: STRIPE_PRICE_EMPEROR_ID
+        sync: false
+      - key: STRIPE_PRICE_IMPERATOR_ID
         sync: false
       - key: MINECRAFT_LINK_SECRET
         sync: false

@@ -382,15 +382,28 @@ function safeEqualHex(a, b) {
   }
 }
 
-const PAID_RANK_ORDER = ['copper', 'iron', 'gold', 'diamond', 'netherite'];
+const PAID_RANK_ORDER = ['default_plus', 'vip', 'vip_plus', 'hero', 'emperor'];
 
 function paidRankConfig() {
-  return PAID_RANK_ORDER.map((key, index) => ({
-    key,
-    priority: index + 1,
-    priceId: String(process.env[`STRIPE_PRICE_${key.toUpperCase()}_ID`] || '').trim(),
-    roleId: String(process.env[`DISCORD_ROLE_${key.toUpperCase()}_ID`] || '').trim(),
-  }));
+  return PAID_RANK_ORDER.map((key, index) => {
+    const envKey = key.toUpperCase();
+    // Compatibilité : le dernier grade a été nommé Emperor puis Imperator.
+    // On accepte les deux noms de variable Render sans changer la clé interne
+    // `emperor`, afin de ne pas casser les commandes/livraisons déjà enregistrées.
+    const priceId = key === 'emperor'
+      ? (process.env.STRIPE_PRICE_EMPEROR_ID || process.env.STRIPE_PRICE_IMPERATOR_ID || '')
+      : (process.env[`STRIPE_PRICE_${envKey}_ID`] || '');
+    const roleId = key === 'emperor'
+      ? (process.env.DISCORD_ROLE_EMPEROR_ID || process.env.DISCORD_ROLE_IMPERATOR_ID || '')
+      : (process.env[`DISCORD_ROLE_${envKey}_ID`] || '');
+
+    return {
+      key,
+      priority: index + 1,
+      priceId: String(priceId).trim(),
+      roleId: String(roleId).trim(),
+    };
+  });
 }
 
 function paidRankByKey(key) {

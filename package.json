@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "private": true,
-  "description": "Site officiel Trizone v3.3.2 : correctifs sécurité sessions/secrets, TLS PostgreSQL, Calagopus, duels, Discord OAuth et boutique.",
+  "description": "Site officiel Trizone v3.3.3 : correctifs sécurité + restauration boutique VIP Stripe + Calagopus.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {
