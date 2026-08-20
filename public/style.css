@@ -139,6 +139,9 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .notice.bad { border-color: #5c2b33; background: #1a0e11; color: #ffc7cf; }
 .notice a { text-decoration: underline; }
 
+.shop-inline-error { margin: 0 0 12px; color: #ffc7cf; font-size: 0.94rem; }
+.shop-inline-error a { color: inherit; text-decoration: underline; }
+
 .profile-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; align-items: start; }
 .profile-panel { text-align: center; position: sticky; top: 86px; }
 .avatar { width: 92px; height: 92px; border-radius: 20px; object-fit: cover; border: 1px solid #4b3a58; }

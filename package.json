@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.4",
+  "version": "3.3.5",
   "private": true,
-  "description": "Site officiel Trizone v3.3.4 : sécurité, compatibilité TLS PostgreSQL Render et variables Stripe anciennes/nouvelles.",
+  "description": "Site officiel Trizone v3.3.5 : interface boutique nettoyée, sans bandeaux informatifs persistants.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

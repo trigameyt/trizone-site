@@ -2,6 +2,22 @@ let shopCategories = [];
 let currentCategory = 'all';
 let currentUser = { authenticated: false };
 
+function clearShopMessage() {
+  const box = document.getElementById('shop-message');
+  if (!box) return;
+  box.hidden = true;
+  box.textContent = '';
+}
+
+function showShopError(message, html = false) {
+  const box = document.getElementById('shop-message');
+  if (!box) return;
+  box.hidden = false;
+  box.className = 'shop-inline-error';
+  if (html) box.innerHTML = message;
+  else box.textContent = message;
+}
+
 function moneyFromMinor(value, currency) {
   const code = String(currency || 'CHF').toUpperCase();
   const minor = Number(value || 0);
@@ -79,11 +95,11 @@ async function checkout(rank, button) {
       return;
     }
     if (!currentUser.user?.minecraft_username) {
-      const notice = document.getElementById('shop-notice');
-      notice.className = 'notice bad';
-      notice.innerHTML = 'Lie d’abord ton compte Minecraft depuis <a href="/account.html">Mon compte</a>.';
+      showShopError('Lie d’abord ton compte Minecraft depuis <a href="/account.html">Mon compte</a>.', true);
       return;
     }
+
+    clearShopMessage();
 
     const data = await Trizone.json('/api/shop/checkout', {
       method: 'POST',
@@ -92,9 +108,7 @@ async function checkout(rank, button) {
     if (!data.url) throw new Error('Lien de paiement Stripe absent.');
     location.href = data.url;
   } catch (error) {
-    const notice = document.getElementById('shop-notice');
-    notice.className = 'notice bad';
-    notice.textContent = error.message;
+    showShopError(error.message);
   } finally {
     button.disabled = false;
     button.textContent = old;
@@ -106,26 +120,22 @@ async function loadShop() {
   trizoneFooter();
   const boot = await Trizone.boot();
   currentUser = boot.me;
-  const notice = document.getElementById('shop-notice');
-  const params = new URLSearchParams(location.search);
+  clearShopMessage();
 
-  if (params.get('payment') === 'cancel') {
-    notice.className = 'notice bad';
-    notice.textContent = 'Paiement annulé. Aucun grade n’a été livré.';
+  // Les retours Stripe n'affichent plus de bandeau permanent.
+  // On nettoie simplement les paramètres de paiement de l'URL.
+  const params = new URLSearchParams(location.search);
+  if (params.has('payment') || params.has('session_id')) {
+    history.replaceState({}, '', location.pathname);
   }
 
   try {
     const payload = await Trizone.json('/api/shop/categories');
     shopCategories = payload.data || [];
-    notice.className = 'notice good';
-    notice.textContent = currentUser.authenticated && currentUser.user?.minecraft_username
-      ? `Achat pour ${currentUser.user.minecraft_username}. Le paiement international et les taxes sont traités par Stripe Managed Payments / Link.`
-      : 'Connecte ton Discord et lie ton compte Minecraft avant d’acheter. Le checkout est traité par Stripe Managed Payments / Link.';
     renderTabs();
     renderProducts();
   } catch (error) {
-    notice.className = 'notice bad';
-    notice.textContent = error.message;
+    showShopError(error.message);
     document.getElementById('products').innerHTML = '<div class="panel"><h3>Boutique pas encore prête</h3><p class="muted">Ajoute la clé Stripe et les Price IDs dans Render avant d’afficher les produits.</p></div>';
   }
 }

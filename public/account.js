@@ -186,7 +186,7 @@ async function loadGameData() {
 async function syncDiscordRank() {
   const button = document.getElementById('sync-discord-rank'); const status = document.getElementById('discord-rank-status'); if (!button || !status) return;
   button.disabled = true; status.innerHTML = '<span class="muted">Synchronisation…</span>';
-  try { const data = await Trizone.json('/api/account/discord-rank/sync', { method: 'POST', body: '{}' }); const label = data.rank ? Trizone.rankLabel(data.rank) : 'aucun grade payant actif'; status.innerHTML = `<div class="notice good">Rôle Discord synchronisé : ${Trizone.escapeHtml(label)}.</div>`; }
+  try { await Trizone.json('/api/account/discord-rank/sync', { method: 'POST', body: '{}' }); status.innerHTML = ''; const old = button.textContent; button.textContent = 'Synchronisé ✓'; setTimeout(() => { button.textContent = old; }, 1500); }
   catch (error) { status.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
   finally { button.disabled = false; }
 }
@@ -194,7 +194,7 @@ async function syncDiscordRank() {
 async function syncMinecraftRank() {
   const button = document.getElementById('sync-minecraft-rank'); const status = document.getElementById('minecraft-rank-status'); if (!button || !status) return;
   button.disabled = true; status.innerHTML = '<span class="muted">Mise en file de livraison…</span>';
-  try { const data = await Trizone.json('/api/account/minecraft-rank/sync', { method: 'POST', body: '{}' }); const label = Trizone.rankLabel(data.rank || 'default'); status.innerHTML = `<div class="notice good">Synchronisation Minecraft demandée : ${Trizone.escapeHtml(label)}.</div>`; }
+  try { await Trizone.json('/api/account/minecraft-rank/sync', { method: 'POST', body: '{}' }); status.innerHTML = ''; const old = button.textContent; button.textContent = 'Synchronisé ✓'; setTimeout(() => { button.textContent = old; }, 1500); }
   catch (error) { status.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
   finally { button.disabled = false; }
 }
@@ -207,8 +207,8 @@ async function loadAccount() {
   }
   const u = me.user; const name = u.discord_global_name || u.discord_username; const avatar = u.discord_avatar || '/assets/trizone-logo-square.jpg';
   const paymentOk = new URLSearchParams(location.search).get('payment') === 'success'; const rank = Trizone.rankLabel(u.minecraft_rank || 'default'); const rankClass = Trizone.rankClass(u.minecraft_rank || 'default');
+  if (paymentOk) history.replaceState({}, '', location.pathname);
   root.innerHTML = `
-    ${paymentOk ? '<div class="notice good">Paiement terminé. Stripe va confirmer le paiement par webhook ; la livraison Discord et Minecraft se fait ensuite automatiquement.</div>' : ''}
     <div class="profile-layout">
       <aside class="profile-panel"><img class="avatar" src="${Trizone.escapeHtml(avatar)}" alt="Avatar Discord"><h2>${Trizone.escapeHtml(name)}</h2><p>@${Trizone.escapeHtml(u.discord_username)}</p><div class="profile-badges">${me.admin ? '<span class="badge badge-admin">Admin</span>' : ''}${u.minecraft_username ? `<span class="badge ${rankClass}">${Trizone.escapeHtml(rank)}</span>` : '<span class="badge">Minecraft non lié</span>'}</div><div class="profile-actions"><a class="btn btn-quiet" href="/leaderboard.html">Leaderboard duels</a>${me.admin ? '<a class="btn btn-primary" href="/admin.html">Panel admin</a>' : ''}<button class="btn btn-quiet" type="button" data-logout>Déconnexion</button></div></aside>
       <div class="account-stack">
