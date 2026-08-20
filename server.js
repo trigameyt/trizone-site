@@ -333,9 +333,23 @@ app.use(helmet({
   },
 }));
 
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Permissions-Policy',
+    'accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()'
+  );
+  next();
+});
+
+const SESSION_SECRET = String(process.env.SESSION_SECRET || '');
+if (Buffer.byteLength(SESSION_SECRET, 'utf8') < 32) {
+  console.error('[security] SESSION_SECRET manquant ou trop court (32 octets minimum). Arrêt du serveur.');
+  process.exit(1);
+}
+
 app.use(cookieSession({
   name: 'trizone_session',
-  keys: [process.env.SESSION_SECRET || 'dev-only-change-me'],
+  keys: [SESSION_SECRET],
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax',
@@ -761,7 +775,12 @@ function requireAdmin(req, res, next) {
 function requireMinecraftSecret(req, res, next) {
   const expected = String(process.env.MINECRAFT_LINK_SECRET || '');
   const received = String(req.get('X-Trizone-Secret') || '');
-  if (!expected || expected.length < 16 || received !== expected) return res.status(401).json({ error: 'Secret serveur invalide.' });
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const receivedBuf = Buffer.from(received, 'utf8');
+  const valid = expectedBuf.length >= 16
+    && expectedBuf.length === receivedBuf.length
+    && crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  if (!valid) return res.status(401).json({ error: 'Secret serveur invalide.' });
   next();
 }
 function discordAvatarUrl(user) {

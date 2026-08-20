@@ -39,6 +39,10 @@ services:
         sync: false
       - key: DATABASE_SSL
         value: "true"
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+      - key: DATABASE_SSL_CA
+        sync: false
       - key: STRIPE_API_VERSION
         value: 2025-03-31.basil
       - key: STRIPE_SECRET_KEY

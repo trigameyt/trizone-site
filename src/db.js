@@ -1,10 +1,35 @@
+const fs = require('fs');
 const { Pool } = require('pg');
 
 const sslEnabled = String(process.env.DATABASE_SSL || 'true').toLowerCase() !== 'false';
 
+function readDatabaseCa() {
+  const inlineCa = String(process.env.DATABASE_SSL_CA || '').trim();
+  if (inlineCa) return inlineCa.replace(/\\n/g, '\n');
+
+  const caPath = String(process.env.DATABASE_SSL_CA_PATH || '').trim();
+  if (caPath) return fs.readFileSync(caPath, 'utf8');
+
+  return undefined;
+}
+
+function databaseSslConfig() {
+  if (!sslEnabled) return false;
+
+  const rejectUnauthorized = String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || 'true').toLowerCase() !== 'false';
+  const ca = readDatabaseCa();
+  const ssl = ca ? { rejectUnauthorized, ca } : { rejectUnauthorized };
+
+  if (!rejectUnauthorized) {
+    console.warn('[security] DATABASE_SSL_REJECT_UNAUTHORIZED=false : TLS PostgreSQL actif sans validation du certificat.');
+  }
+
+  return ssl;
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+  ssl: databaseSslConfig(),
   max: 8,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
