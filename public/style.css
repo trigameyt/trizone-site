@@ -780,9 +780,9 @@ td small { color: var(--muted); margin-top: 3px; }
   filter: drop-shadow(0 2px 2px rgba(0,0,0,.42));
 }
 .mc-item-icon img[data-mc-special-icon="shield"] {
-  inset: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   overflow: visible;
 }
