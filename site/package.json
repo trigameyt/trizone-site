@@ -1,6 +1,6 @@
 {
   "name": "trizone-site",
-  "version": "3.3.7",
+  "version": "3.3.8",
   "private": true,
   "description": "Site officiel Trizone v3.3.7 : correctif des tooltips techniques sur les icônes Minecraft.",
   "main": "server.js",

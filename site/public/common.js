@@ -95,6 +95,11 @@ const Trizone = (() => {
 
 
   const MINECRAFT_ASSET_VERSION = '1.21.11';
+  const MINECRAFT_SPECIAL_ICON_SOURCES = Object.freeze({
+    // Le bouclier Java est un modele d'entite : il n'existe pas en textures/item/shield.png.
+    // On utilise donc une icone locale pour eviter les 404 item + block.
+    shield: '/assets/minecraft/shield.svg?v=338'
+  });
 
   function normalizeMinecraftMaterial(material) {
     return String(material || 'IRON_SWORD')
@@ -107,6 +112,12 @@ const Trizone = (() => {
   function minecraftIconHtml(material, _legacyFallback = '', extraClass = '') {
     const key = normalizeMinecraftMaterial(material);
     const safeClass = String(extraClass || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const specialSrc = MINECRAFT_SPECIAL_ICON_SOURCES[key];
+
+    if (specialSrc) {
+      return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}"><img src="${specialSrc}" alt="" loading="lazy" decoding="async"></span>`;
+    }
+
     const itemSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/${key}.png`;
     const blockSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/block/${key}.png`;
     const fallbackSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/barrier.png`;
