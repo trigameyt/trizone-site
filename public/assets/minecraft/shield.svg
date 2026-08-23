@@ -1,28 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">
-  <rect x="8" y="3" width="16" height="2" fill="#d8d8d8"/>
-  <rect x="6" y="5" width="20" height="2" fill="#9a9a9a"/>
-  <rect x="5" y="7" width="2" height="12" fill="#bdbdbd"/>
-  <rect x="25" y="7" width="2" height="12" fill="#6f6f6f"/>
-  <rect x="7" y="7" width="18" height="12" fill="#8b5a2b"/>
-  <rect x="8" y="8" width="5" height="10" fill="#a66a30"/>
-  <rect x="13" y="8" width="5" height="10" fill="#7b4b23"/>
-  <rect x="18" y="8" width="6" height="10" fill="#945b28"/>
-  <rect x="7" y="19" width="2" height="4" fill="#bdbdbd"/>
-  <rect x="23" y="19" width="2" height="4" fill="#6f6f6f"/>
-  <rect x="9" y="19" width="14" height="4" fill="#855226"/>
-  <rect x="9" y="23" width="2" height="3" fill="#9b9b9b"/>
-  <rect x="21" y="23" width="2" height="3" fill="#696969"/>
-  <rect x="11" y="23" width="10" height="3" fill="#815024"/>
-  <rect x="11" y="26" width="2" height="2" fill="#888"/>
-  <rect x="19" y="26" width="2" height="2" fill="#5f5f5f"/>
-  <rect x="13" y="26" width="6" height="2" fill="#74461f"/>
-  <rect x="10" y="10" width="2" height="2" fill="#c07a35"/>
-  <rect x="20" y="11" width="2" height="2" fill="#b06b2d"/>
-  <rect x="15" y="14" width="2" height="2" fill="#9a612c"/>
-  <rect x="9" y="16" width="2" height="2" fill="#8b5325"/>
-  <rect x="21" y="16" width="2" height="2" fill="#71431f"/>
-  <rect x="7" y="9" width="2" height="2" fill="#d1d1d1"/>
-  <rect x="23" y="10" width="2" height="2" fill="#7e7e7e"/>
-  <rect x="7" y="16" width="2" height="2" fill="#a8a8a8"/>
-  <rect x="23" y="16" width="2" height="2" fill="#666"/>
+  <!-- Minecraft-like GUI shield: slightly rotated 3D face -->
+  <!-- rear thickness -->
+  <path d="M7 7h2v17H7z" fill="#4a4a4a"/>
+  <path d="M9 24h2v2H9z" fill="#3b3b3b"/>
+
+  <!-- outer metal rim -->
+  <path d="M9 4h12v2h3v3h2v11h-2v4h-3v3h-3v2h-5v-2h-3v-3H8V8h1z" fill="#7b7b7b"/>
+  <!-- metal highlights / shadows -->
+  <path d="M10 4h11v2H10zM9 6h2v17H9zM11 24h2v2h-2z" fill="#b7b7b7"/>
+  <path d="M22 7h2v2h-2zM24 9h2v11h-2zM22 20h2v4h-2zM19 24h3v3h-3zM14 27h5v2h-5z" fill="#565656"/>
+
+  <!-- wooden face -->
+  <path d="M11 7h11v2h2v10h-2v4h-3v3h-6v-2h-2z" fill="#8a5524"/>
+  <path d="M11 7h3v17h-3z" fill="#a96b2d"/>
+  <path d="M14 7h3v19h-3z" fill="#7e491d"/>
+  <path d="M17 7h3v18h-3z" fill="#9c5c23"/>
+  <path d="M20 9h2v14h-2z" fill="#744019"/>
+  <!-- plank highlights -->
+  <path d="M12 9h1v5h-1zM15 8h1v7h-1zM18 10h1v6h-1zM21 11h1v5h-1z" fill="#ba7631"/>
+  <!-- rivets -->
+  <rect x="10" y="8" width="2" height="2" fill="#c3c3c3"/>
+  <rect x="21" y="9" width="2" height="2" fill="#8d8d8d"/>
+  <rect x="10" y="18" width="2" height="2" fill="#a4a4a4"/>
+  <rect x="20" y="19" width="2" height="2" fill="#747474"/>
+  <!-- subtle lower edge -->
+  <rect x="13" y="25" width="6" height="1" fill="#654018"/>
 </svg>
