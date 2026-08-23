@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.5",
+  "version": "3.3.6",
   "private": true,
-  "description": "Site officiel Trizone v3.3.5 : interface boutique nettoyée, sans bandeaux informatifs persistants.",
+  "description": "Site officiel Trizone v3.3.6 : mentions légales compactes et protections web renforcées.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

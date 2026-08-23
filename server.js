@@ -327,8 +327,13 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       connectSrc: ["'self'"],
       frameSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
+      scriptSrcAttr: ["'none'"],
+      workerSrc: ["'none'"],
+      manifestSrc: ["'self'"],
     },
   },
 }));
@@ -338,6 +343,16 @@ app.use((_req, res, next) => {
     'Permissions-Policy',
     'accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()'
   );
+  next();
+});
+
+app.use((_req, res, next) => {
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 
@@ -423,11 +438,18 @@ function paidRankConfig() {
 function logShopEnvironmentStatus() {
   const ranks = paidRankConfig();
   const configured = ranks.filter((rank) => rank.priceId);
+  const secretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
   if (!configured.length) {
     console.warn('[Stripe config] Aucun Price ID trouvé. Vérifie les variables STRIPE_PRICE_*_ID dans Render.');
     return;
   }
   console.log('[Stripe config] Price IDs détectés pour : ' + configured.map((rank) => `${rank.key} (${rank.priceEnvName})`).join(', '));
+  if (process.env.NODE_ENV === 'production' && secretKey.startsWith('sk_test_')) {
+    console.warn('[Stripe config] ATTENTION : le site Render est en production mais STRIPE_SECRET_KEY utilise encore une clé de test.');
+  }
+  if (process.env.NODE_ENV === 'production' && secretKey.startsWith('sk_live_')) {
+    console.log('[Stripe config] Clé Stripe LIVE détectée.');
+  }
 }
 
 function paidRankByKey(key) {
@@ -796,6 +818,44 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false }));
 
+const BASE_ORIGIN = (() => {
+  try { return new URL(BASE_URL).origin; } catch { return ''; }
+})();
+
+function requestOrigin(req) {
+  const origin = String(req.get('Origin') || '').trim();
+  if (origin) return origin;
+  const referer = String(req.get('Referer') || '').trim();
+  if (!referer) return '';
+  try { return new URL(referer).origin; } catch { return '__invalid__'; }
+}
+
+// Défense CSRF supplémentaire pour toutes les écritures déclenchées depuis le navigateur.
+// Les endpoints Minecraft utilisent leur secret partagé et n'ont pas d'Origin navigateur.
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (req.path.startsWith('/api/minecraft/')) return next();
+
+  const origin = requestOrigin(req);
+  const fetchSite = String(req.get('Sec-Fetch-Site') || '').toLowerCase();
+  if (origin && (!BASE_ORIGIN || origin !== BASE_ORIGIN)) {
+    return res.status(403).json({ error: 'Origine de requête refusée.' });
+  }
+  if (!origin && fetchSite && !['same-origin', 'none'].includes(fetchSite)) {
+    return res.status(403).json({ error: 'Requête cross-site refusée.' });
+  }
+  next();
+});
+
+// Les réponses liées au compte et à l'administration ne doivent pas être mises en cache.
+app.use((req, res, next) => {
+  if (req.path === '/api/me' || req.path.startsWith('/api/account/') || req.path.startsWith('/api/admin/')) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+  }
+  next();
+});
+
 function adminIds() {
   return new Set(String(process.env.ADMIN_DISCORD_IDS || '').split(',').map((v) => v.trim()).filter(Boolean));
 }
@@ -1039,7 +1099,18 @@ async function getSiteConfig() {
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.1' }));
+function legalShopReadiness(config = {}) {
+  const name = String(config.legal_operator_name || '').trim();
+  const address = String(config.legal_contact_address || '').trim();
+  const email = String(config.legal_contact_email || '').trim();
+  const missing = [];
+  if (name.length < 3) missing.push('identité légale de l’exploitant');
+  if (address.length < 8) missing.push('adresse postale de contact');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) missing.push('e-mail de contact');
+  return { ready: missing.length === 0, missing };
+}
+
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.6' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
@@ -1809,6 +1880,14 @@ app.get('/api/shop/categories', async (_req, res) => {
 
 app.post('/api/shop/checkout', requireAuth, sensitiveLimiter, async (req, res) => {
   try {
+    const legalConfig = await getSiteConfig();
+    const legal = legalShopReadiness(legalConfig);
+    if (!legal.ready) {
+      return res.status(503).json({
+        error: `Boutique non ouverte : complète ${legal.missing.join(', ')} dans le panel admin avant d'accepter des paiements.`,
+      });
+    }
+
     const rankKey = String(req.body?.rank || '').trim().toLowerCase();
     const rank = paidRankByKey(rankKey);
     if (!rank || !rank.priceId) return res.status(400).json({ error: 'Produit invalide ou non configuré.' });

@@ -16,7 +16,6 @@ function trizoneHeader(active = '') {
           <a class="${active === 'leaderboard' ? 'active' : ''}" href="/leaderboard.html">Leaderboard</a>
           <a class="${active === 'account' ? 'active' : ''}" href="/account.html">Compte</a>
           <a class="${active === 'admin' ? 'active' : ''}" href="/admin.html" data-auth="admin" hidden>Admin</a>
-          <a class="${active === 'legal' ? 'active' : ''}" href="/legal.html">Infos</a>
         </nav>
         <div class="nav-actions">
           <a class="btn btn-quiet btn-small" href="/account.html" data-auth="user" hidden data-account-label>Mon compte</a>
@@ -26,9 +25,10 @@ function trizoneHeader(active = '') {
     </header>`;
 }
 
-function trizoneFooter() {
+function trizoneFooter(options = {}) {
   const root = document.getElementById('site-footer');
   if (!root) return;
+  const showLegalIdentity = options?.showLegalIdentity === true;
   root.innerHTML = `
     <footer class="footer">
       <div class="container footer-grid">
@@ -38,11 +38,18 @@ function trizoneFooter() {
           <p class="footer-note">Serveur Minecraft communautaire Java & Bedrock.</p>
         </div>
         <div class="footer-links">
+          <a href="/legal.html#mentions">Mentions légales</a>
           <a href="/legal.html#privacy">Confidentialité</a>
           <a href="/legal.html#conditions">Conditions</a>
           <a href="/shop.html">Boutique</a>
         </div>
       </div>
+      ${showLegalIdentity ? `
+        <div class="container legal-footer-identity" id="mentions" aria-label="Mentions légales">
+          <span><strong>Exploitant :</strong> <span id="footer-operator-name">À renseigner</span></span>
+          <span><strong>Adresse :</strong> <span id="footer-operator-address">À renseigner</span></span>
+          <span><strong>E-mail :</strong> <a id="footer-operator-email" href="#">À renseigner</a></span>
+        </div>` : ''}
       <div class="container minecraft-disclaimer">Non officiel. Trizone n’est ni approuvé, ni associé à Mojang ou Microsoft.</div>
     </footer>`;
 }

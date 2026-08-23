@@ -20,9 +20,9 @@ const siteFields = [
 ];
 
 const legalFields = [
-  ['legal_operator_name', 'Nom / identité de l’exploitant', 'text', 'À compléter avant l’ouverture des paiements.'],
-  ['legal_contact_address', 'Adresse de contact', 'textarea', 'Adresse de contact de l’exploitant.'],
-  ['legal_contact_email', 'E-mail de contact', 'text', 'E-mail valable pour les demandes liées au site / boutique.'],
+  ['legal_operator_name', 'Nom / identité légale de l’exploitant', 'text', 'Nom complet de la personne ou raison sociale de l’entité qui exploite réellement la boutique. Ne mets pas seulement « Trizone » si ce n’est pas une société enregistrée.'],
+  ['legal_contact_address', 'Adresse postale de contact', 'textarea', 'Adresse postale complète permettant de contacter l’exploitant (rue, numéro, NPA, localité, pays).'],
+  ['legal_contact_email', 'E-mail de contact', 'text', 'Adresse e-mail valable et consultée pour les demandes liées au site, à la boutique et aux mentions légales.'],
   ['privacy_contact_email', 'E-mail vie privée', 'text', 'Peut être le même que l’e-mail de contact.'],
   ['legal_extra_terms', 'Conditions supplémentaires', 'textarea', 'Règles propres à Trizone qui viennent compléter les conditions affichées.'],
 ];
@@ -432,7 +432,7 @@ async function initAdmin() {
         <div class="panel-head"><div><h3>Modifier le site</h3><p>Ces changements sont visibles directement sur l’accueil.</p></div></div>
         <div class="form-grid">${siteFields.map(fieldHtml).join('')}</div>
         <hr class="divider">
-        <div class="panel-head"><div><h3>Informations légales — Suisse</h3><p>Renseigne une identité, une adresse de contact et un e-mail avant d’ouvrir les paiements.</p></div><a class="btn btn-quiet btn-small" href="/legal.html" target="_blank" rel="noopener">Voir la page</a></div>
+        <div class="panel-head"><div><h3>Informations légales — Suisse</h3><p>Obligatoires avant les paiements : identité légale, adresse postale complète et e-mail. Le serveur bloque désormais la création d’un Checkout si ces trois champs sont vides.</p></div><a class="btn btn-quiet btn-small" href="/legal.html#mentions" target="_blank" rel="noopener">Voir les mentions</a></div>
         <div class="form-grid">${legalFields.map(fieldHtml).join('')}</div>
         <div class="save-bar"><button class="btn btn-primary" id="save-site" type="button">Enregistrer le site</button><span id="site-save-status" class="muted"></span></div>
       </section>

@@ -254,6 +254,16 @@ td small { color: var(--muted); margin-top: 3px; }
 .footer-note { margin: 6px 0 0; }
 .footer-links { display: flex; gap: 14px; flex-wrap: wrap; }
 .footer-links a:hover { color: #d7c5e8; }
+
+.legal-sources { display: grid; gap: 10px; padding-left: 20px; }
+.legal-sources li { margin: 0; }
+.legal-sources a { color: #c9a7ff; text-decoration: underline; text-underline-offset: 2px; }
+.legal-sources a:hover { color: #e0cfff; }
+.legal-note { margin-top: 14px; font-size: .78rem; color: #8f8796; }
+.legal-footer-identity { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-soft); display: flex; flex-wrap: wrap; gap: 7px 16px; font-size: .74rem; line-height: 1.55; color: #817a87; }
+.legal-footer-identity strong { color: #a49ba9; font-weight: 700; }
+.legal-footer-identity a { color: #a999b4; text-decoration: underline; text-underline-offset: 2px; }
+.legal-footer-identity span { white-space: pre-line; overflow-wrap: anywhere; }
 .minecraft-disclaimer { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: #716a76; }
 
 @media (max-width: 900px) {
