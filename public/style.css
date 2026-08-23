@@ -767,6 +767,7 @@ td small { color: var(--muted); margin-top: 3px; }
   height: 1.45em;
   flex: 0 0 auto;
   vertical-align: -0.25em;
+  overflow: visible;
 }
 .mc-item-icon img {
   position: absolute;
@@ -777,6 +778,13 @@ td small { color: var(--muted); margin-top: 3px; }
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   filter: drop-shadow(0 2px 2px rgba(0,0,0,.42));
+}
+.mc-item-icon img[data-mc-special-icon="shield"] {
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: contain;
+  overflow: visible;
 }
 .mc-item-icon img[hidden] { display: none; }
 .mc-icon-tab { width: 24px; height: 24px; vertical-align: middle; }
