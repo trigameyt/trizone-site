@@ -1,0 +1,8 @@
+TRIZONE SITE v3.3.10 — VANILLA SHIELD ICON
+
+- Remplace l'icone violette du bouclier par une icone locale style bouclier vanilla Minecraft (bois + metal).
+- Aucune requete vers textures/item/shield.png ou textures/block/shield.png.
+- Cache-buster passe a v=3310.
+
+Deploie le contenu de CE dossier directement a la racine du depot GitHub.
+Puis Render > Manual Deploy > Clear build cache & deploy.
