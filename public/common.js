@@ -98,7 +98,7 @@ const Trizone = (() => {
   const MINECRAFT_SPECIAL_ICON_SOURCES = Object.freeze({
     // v3.3.13: utilise une vraie icone locale style item Minecraft pour le bouclier.
     // Pas de chargement externe et pas de 404.
-    shield: '/assets/minecraft/shield.png?v=3313'
+    shield: '/assets/minecraft/shield.jpg?v=3314'
   });
 
   function normalizeMinecraftMaterial(material) {
