@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.6",
+  "version": "3.3.9",
   "private": true,
-  "description": "Site officiel Trizone v3.3.6 : mentions légales compactes et protections web renforcées.",
+  "description": "Site officiel Trizone v3.3.7 : correctif des tooltips techniques sur les icônes Minecraft.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {

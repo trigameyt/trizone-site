@@ -1110,7 +1110,7 @@ function legalShopReadiness(config = {}) {
   return { ready: missing.length === 0, missing };
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.6' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.7' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};

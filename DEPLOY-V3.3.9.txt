@@ -1,0 +1,16 @@
+TRIZONE v3.3.9 - IMPORTANT
+
+Ce ZIP est ROOT-READY : server.js, package.json, public/, src/ sont directement a la racine du ZIP.
+
+Sur GitHub, ces fichiers doivent etre a la RACINE du depot :
+  /server.js
+  /package.json
+  /public/common.js
+  /public/leaderboard.html
+
+NE PAS mettre le tout dans un dossier /site/.
+
+Verification apres deploy :
+- leaderboard.html doit charger common.js?v=339
+- common.js ne doit jamais demander textures/item/shield.png ni textures/block/shield.png pour minecraft:shield
+- le shield utilise un SVG data: embarque, donc aucune requete reseau pour cette icone.

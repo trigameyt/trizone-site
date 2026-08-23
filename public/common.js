@@ -95,6 +95,11 @@ const Trizone = (() => {
 
 
   const MINECRAFT_ASSET_VERSION = '1.21.11';
+  const MINECRAFT_SPECIAL_ICON_SOURCES = Object.freeze({
+    // v3.3.9: le bouclier utilise un SVG embarque et ne passe plus par les textures distantes.
+    // SVG embarque directement => aucune requete HTTP, donc aucun 404 possible.
+    shield: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23d6d6d6' stroke='%23505050' stroke-width='2' d='M5 3h22v10c0 8-4.7 13.2-11 16C9.7 26.2 5 21 5 13V3z'/%3E%3Cpath fill='%238b5cf6' d='M8 6h8v19.3C11 22.8 8 18.6 8 13V6z'/%3E%3Cpath fill='%236d28d9' d='M16 6h8v7c0 5.6-3 9.8-8 12.3V6z'/%3E%3C/svg%3E"
+  });
 
   function normalizeMinecraftMaterial(material) {
     return String(material || 'IRON_SWORD')
@@ -107,10 +112,16 @@ const Trizone = (() => {
   function minecraftIconHtml(material, _legacyFallback = '', extraClass = '') {
     const key = normalizeMinecraftMaterial(material);
     const safeClass = String(extraClass || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const specialSrc = MINECRAFT_SPECIAL_ICON_SOURCES[key];
+
+    if (specialSrc) {
+      return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}"><img src="${specialSrc}" alt="" loading="lazy" decoding="async"></span>`;
+    }
+
     const itemSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/${key}.png`;
     const blockSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/block/${key}.png`;
     const fallbackSrc = `https://assets.mcasset.cloud/${MINECRAFT_ASSET_VERSION}/assets/minecraft/textures/item/barrier.png`;
-    return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}" title="${escapeHtml(`minecraft:${key}`)}"><img src="${itemSrc}" data-mc-item-icon data-mc-block-src="${blockSrc}" data-mc-fallback-src="${fallbackSrc}" alt="" loading="lazy" decoding="async"></span>`;
+    return `<span class="mc-item-icon${safeClass ? ` ${safeClass}` : ''}"><img src="${itemSrc}" data-mc-item-icon data-mc-block-src="${blockSrc}" data-mc-fallback-src="${fallbackSrc}" alt="" loading="lazy" decoding="async"></span>`;
   }
 
   function bindMinecraftIcons(root = document) {
