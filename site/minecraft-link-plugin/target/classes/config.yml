@@ -1,0 +1,31 @@
+api-url: "https://trizone.club/api/minecraft/link/confirm"
+sync-url: "https://trizone.club/api/minecraft/profile-sync"
+
+# Inventaire Survie + Ender Chest affichés dans la section Compte du site.
+game-sync-url: "https://trizone.club/api/minecraft/game-sync"
+source-server: "Lobby"
+# Seul cet inventaire de monde est envoyé au site. Les autres mondes ne peuvent pas l'écraser.
+survival-world: "world"
+inventory-sync-interval-seconds: 60
+
+# Livraison automatique des grades achetés via Stripe Managed Payments.
+# Installe ce plugin sur UN seul serveur Paper qui a accès à la même base LuckPerms que le réseau (Lobby conseillé).
+delivery-url: "https://trizone.club/api/minecraft/deliveries?format=lines"
+delivery-ack-base-url: "https://trizone.club/api/minecraft/deliveries"
+poll-interval-seconds: 10
+
+# DOIT être exactement identique à MINECRAFT_LINK_SECRET dans Render.
+secret: "CHANGE_ME"
+timeout-seconds: 8
+
+# Commande LuckPerms côté console. "luckperms" fonctionne normalement partout.
+luckperms-command: "luckperms"
+
+# Le plugin ne retire/modifie QUE ces groupes lors d'une livraison boutique.
+# Il ne touche pas à owner/admin/mod/helper/builder/etc.
+paid-rank-groups:
+  - copper
+  - iron
+  - gold
+  - diamond
+  - netherite

@@ -1,0 +1,25 @@
+{
+  "name": "trizone-site",
+  "version": "3.3.7",
+  "private": true,
+  "description": "Site officiel Trizone v3.3.7 : correctif des tooltips techniques sur les icônes Minecraft.",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check src/db.js"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3"
+  }
+}

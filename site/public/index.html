@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Trizone, serveur Minecraft Java et Bedrock : survie, PvP, duels et événements.">
+  <title>Trizone — Serveur Minecraft</title>
+  <meta name="theme-color" content="#0b0710">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/assets/favicon.png">
+  <link rel="shortcut icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="/style.css?v=330">
+  <script defer src="/components.js?v=330"></script>
+  <script defer src="/common.js?v=330"></script>
+  <script defer src="/home.js?v=330"></script>
+</head>
+<body>
+  <div id="site-header"></div>
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Serveur Minecraft Java & Bedrock</p>
+          <h1 data-site-text="home_title">TRIZONE</h1>
+          <p class="hero-description" data-site-text="home_description">Trizone est un réseau Minecraft Java & Bedrock centré sur la survie et le PvP : progression par grades, warzone, duels, événements et systèmes communautaires.</p>
+          <p class="server-tagline" data-site-text="server_tagline">Survie • PvP • Duels • Événements • Java & Bedrock</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary" type="button" data-copy="play.trizone.club" data-server-address>Copier l’adresse du serveur</button>
+            <a class="btn btn-quiet" href="/shop.html">Boutique</a>
+          </div>
+          <div class="server-address">
+            <span class="status-dot" aria-hidden="true"></span>
+            <code data-site-text="server_address" data-server-address>play.trizone.club</code>
+          </div>
+        </div>
+        <div class="hero-media">
+          <img src="/assets/trizone-banner.png" alt="Univers visuel Trizone">
+        </div>
+      </div>
+      <div class="container"><div class="announcement" data-announcement hidden></div></div>
+    </section>
+
+    <section class="section section-status" id="status">
+      <div class="container">
+        <div class="status-section-heading">
+          <div>
+            <p class="eyebrow">Réseau Minecraft</p>
+            <h2 data-site-text="status_title">État des serveurs Minecraft</h2>
+            <p data-site-text="status_description">Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.</p>
+          </div>
+          <div id="status-summary" class="status-summary is-loading">
+            <span class="status-summary-dot"></span>
+            <span>Vérification…</span>
+          </div>
+        </div>
+
+        <div class="uptime-panel" aria-live="polite">
+          <div class="uptime-panel-head">
+            <div>
+              <strong>Serveurs</strong>
+              <span>Proxy, Warzone, Spawn, Minigame et Auth.</span>
+            </div>
+            <span class="uptime-window">1 h</span>
+          </div>
+          <div id="status-board" class="uptime-list">
+            <div class="uptime-loading">Chargement de l’état des serveurs…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-title">
+          <h2>Ce qu’on trouve sur Trizone</h2>
+          <p>Pas de grand discours : voilà les principales parties du serveur.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-number">01</span>
+            <h3 data-site-text="feature_1_title">Survie & progression</h3>
+            <p data-site-text="feature_1_text">Développe ton stuff, progresse dans les grades et profite des systèmes d’économie et de progression du serveur.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">02</span>
+            <h3 data-site-text="feature_2_title">PvP & duels</h3>
+            <p data-site-text="feature_2_text">Warzone, entraînement PvP et duels pour se battre, tester ses kits et progresser face aux autres joueurs.</p>
+          </article>
+          <article class="feature-card">
+            <span class="feature-number">03</span>
+            <h3 data-site-text="feature_3_title">Java & Bedrock</h3>
+            <p data-site-text="feature_3_text">Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-dark">
+      <div class="container split">
+        <div>
+          <p class="eyebrow">Compte Trizone</p>
+          <h2>Discord et Minecraft au même endroit.</h2>
+          <p class="lead">Connecte ton Discord, lie ton pseudo Minecraft avec <code>/link</code>, puis retrouve ton grade et ton historique de boutique depuis ton profil.</p>
+        </div>
+        <div class="split-actions">
+          <a class="btn btn-primary" href="/auth/discord" data-auth="guest" hidden>Se connecter avec Discord</a>
+          <a class="btn btn-primary" href="/account.html" data-auth="user" hidden>Ouvrir mon profil</a>
+          <a class="btn btn-quiet" href="#" data-site-href="discord_invite_url" hidden>Rejoindre le Discord</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div id="site-footer"></div>
+</body>
+</html>
