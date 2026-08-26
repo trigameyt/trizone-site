@@ -633,12 +633,11 @@ async function enqueueMinecraftRankSync(discordId, reason = 'shop_sync') {
     const inserted = await client.query(
       `INSERT INTO minecraft_deliveries(
          discord_id, minecraft_uuid, minecraft_username, target_rank, reason, status, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
-       RETURNING id`,
+       ) VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
       [discordId, row.minecraft_uuid, row.minecraft_username, target?.key || 'default', reason]
     );
     await client.query('COMMIT');
-    return { queued: true, id: inserted.rows[0].id, rank: target?.key || 'default' };
+    return { queued: true, id: inserted.insertId, rank: target?.key || 'default' };
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -686,18 +685,18 @@ async function upsertStripeCheckout(session, eventId, active) {
        minecraft_uuid, minecraft_username, rank_key, price_id,
        amount_total, currency, payment_status, active, purchased_at, updated_at
      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-     ON CONFLICT (checkout_session_id) DO UPDATE SET
-       event_id = EXCLUDED.event_id,
-       payment_intent_id = COALESCE(EXCLUDED.payment_intent_id, stripe_orders.payment_intent_id),
-       discord_id = EXCLUDED.discord_id,
-       minecraft_uuid = EXCLUDED.minecraft_uuid,
-       minecraft_username = EXCLUDED.minecraft_username,
-       rank_key = EXCLUDED.rank_key,
-       price_id = EXCLUDED.price_id,
-       amount_total = EXCLUDED.amount_total,
-       currency = EXCLUDED.currency,
-       payment_status = EXCLUDED.payment_status,
-       active = EXCLUDED.active,
+     ON DUPLICATE KEY UPDATE
+       event_id = VALUES(event_id),
+       payment_intent_id = COALESCE(VALUES(payment_intent_id), payment_intent_id),
+       discord_id = VALUES(discord_id),
+       minecraft_uuid = VALUES(minecraft_uuid),
+       minecraft_username = VALUES(minecraft_username),
+       rank_key = VALUES(rank_key),
+       price_id = VALUES(price_id),
+       amount_total = VALUES(amount_total),
+       currency = VALUES(currency),
+       payment_status = VALUES(payment_status),
+       active = VALUES(active),
        updated_at = NOW()`,
     [
       String(session.id), eventId || null, paymentIntentId || null, discordId,
@@ -718,13 +717,18 @@ async function upsertStripeCheckout(session, eventId, active) {
 async function deactivateStripeOrderByPaymentIntent(paymentIntentId, reason = 'refund') {
   if (!paymentIntentId) return { handled: false, reason: 'no_payment_intent' };
   const affected = await query(
-    `UPDATE stripe_orders
-     SET active = FALSE, payment_status = $2, updated_at = NOW()
-     WHERE payment_intent_id = $1 AND active = TRUE
-     RETURNING discord_id, checkout_session_id, rank_key`,
-    [paymentIntentId, reason]
+    `SELECT discord_id, checkout_session_id, rank_key
+     FROM stripe_orders
+     WHERE payment_intent_id = $1 AND active = TRUE`,
+    [paymentIntentId]
   );
   if (!affected.rowCount) return { handled: false, reason: 'order_not_found' };
+  await query(
+    `UPDATE stripe_orders
+     SET active = FALSE, payment_status = $2, updated_at = NOW()
+     WHERE payment_intent_id = $1 AND active = TRUE`,
+    [paymentIntentId, reason]
+  );
 
   const discordIds = [...new Set(affected.rows.map((row) => row.discord_id))];
   for (const discordId of discordIds) {
@@ -783,19 +787,22 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '
   }
 
   try {
-    const stored = await query(
+    const existingEvent = await query(
+      `SELECT processed FROM stripe_events WHERE event_id = $1 LIMIT 1`,
+      [String(event.id || '')]
+    );
+    if (existingEvent.rows[0]?.processed) return res.status(200).json({ received: true, duplicate: true });
+
+    await query(
       `INSERT INTO stripe_events(event_id, type, event_created_at, data, processed, received_at)
-       VALUES ($1, $2, $3, $4::jsonb, FALSE, NOW())
-       ON CONFLICT (event_id) DO UPDATE SET type = EXCLUDED.type
-       RETURNING processed`,
+       VALUES ($1, $2, $3, $4, FALSE, NOW())
+       ON DUPLICATE KEY UPDATE type = VALUES(type)`,
       [
         String(event.id || ''), String(event.type || 'unknown'),
         Number.isFinite(Number(event.created)) ? new Date(Number(event.created) * 1000) : null,
         JSON.stringify(event.data || {}),
       ]
     );
-
-    if (stored.rows[0]?.processed) return res.status(200).json({ received: true, duplicate: true });
 
     const result = await handleStripeEvent(event);
     await query(
@@ -914,7 +921,7 @@ function duelIdentityKeyFrom(username, uuid) {
 
 function duelIdentityKeySql(alias = '') {
   const a = alias ? `${alias}.` : '';
-  return `CASE WHEN LEFT(COALESCE(${a}minecraft_username,''),1)='.' THEN 'bedrock:' || LOWER(${a}minecraft_username) ELSE 'uuid:' || ${a}minecraft_uuid END`;
+  return `CASE WHEN LEFT(COALESCE(${a}minecraft_username,''),1)='.' THEN CONCAT('bedrock:', LOWER(${a}minecraft_username)) ELSE CONCAT('uuid:', ${a}minecraft_uuid) END`;
 }
 
 function duelIdentityCtesSql() {
@@ -932,11 +939,15 @@ function duelIdentityCtesSql() {
       SELECT ${settingKey} AS identity_key,p.minecraft_uuid,p.minecraft_username,1 AS source_priority,p.updated_at
       FROM duel_player_settings p WHERE p.minecraft_username IS NOT NULL
     ),
-    identities AS (
-      SELECT DISTINCT ON (identity_key) identity_key,minecraft_uuid,minecraft_username
+    identity_ranked AS (
+      SELECT identity_key,minecraft_uuid,minecraft_username,
+             ROW_NUMBER() OVER (PARTITION BY identity_key ORDER BY source_priority DESC, updated_at DESC) AS identity_pick
       FROM identity_candidates
       WHERE identity_key IS NOT NULL
-      ORDER BY identity_key,source_priority DESC,updated_at DESC NULLS LAST
+    ),
+    identities AS (
+      SELECT identity_key,minecraft_uuid,minecraft_username
+      FROM identity_ranked WHERE identity_pick=1
     ),
     stat_candidates AS (
       SELECT ${statKey} AS identity_key,s.*,
@@ -961,7 +972,7 @@ async function resolveDuelIdentity(identity) {
         UNION ALL SELECT minecraft_uuid,minecraft_username,updated_at FROM duel_player_stats
         UNION ALL SELECT minecraft_uuid,minecraft_username,updated_at FROM duel_player_settings
       ) x WHERE minecraft_uuid=$1 AND minecraft_username IS NOT NULL
-      ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [asUuid]);
+      ORDER BY updated_at DESC LIMIT 1`, [asUuid]);
     const username = found.rows[0]?.minecraft_username || null;
     return { identityKey: duelIdentityKeyFrom(username, asUuid) || `uuid:${asUuid}`, uuid: asUuid, username };
   }
@@ -972,7 +983,7 @@ async function resolveDuelIdentity(identity) {
       UNION ALL SELECT minecraft_uuid,minecraft_username,updated_at FROM duel_player_stats
       UNION ALL SELECT minecraft_uuid,minecraft_username,updated_at FROM duel_player_settings
     ) x WHERE LOWER(minecraft_username)=LOWER($1)
-    ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [raw]);
+    ORDER BY updated_at DESC LIMIT 1`, [raw]);
   const row = found.rows[0];
   if (!row) return null;
   return { identityKey: duelIdentityKeyFrom(row.minecraft_username,row.minecraft_uuid), uuid: row.minecraft_uuid, username: row.minecraft_username };
@@ -1019,13 +1030,13 @@ async function duelPlayerPayload(identity) {
 
   const [settings, rows, catalog, overallRank] = await Promise.all([
     query(`SELECT selected_kit,minecraft_username,minecraft_uuid FROM duel_player_settings p
-           WHERE ${settingKey}=$1 ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [identityKey]),
+           WHERE ${settingKey}=$1 ORDER BY updated_at DESC LIMIT 1`, [identityKey]),
     query(`
       WITH ${ctes}, base AS (
         SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,
-               COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
-               COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths,COALESCE(s.streak,0)::int AS streak,
-               COALESCE(s.best_streak,0)::int AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played
+               COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses,
+               COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths,COALESCE(s.streak,0) AS streak,
+               COALESCE(s.best_streak,0) AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played
         FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
       ), ranked AS (
@@ -1036,14 +1047,14 @@ async function duelPlayerPayload(identity) {
     query(`
       WITH ${ctes}, all_kit_stats AS (
         SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
-               COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,COALESCE(s.losses,0)::int AS losses,
-               COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
+               COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses,
+               COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
         FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
       ), agg AS (
-        SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
-               COALESCE(SUM(wins),0)::int AS wins,COALESCE(SUM(losses),0)::int AS losses,
-               COALESCE(SUM(kills),0)::int AS kills,COALESCE(SUM(deaths),0)::int AS deaths
+        SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo)),300) AS elo,
+               COALESCE(SUM(wins),0) AS wins,COALESCE(SUM(losses),0) AS losses,
+               COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths
         FROM all_kit_stats
         GROUP BY identity_key,minecraft_uuid,minecraft_username
       ), ranked AS (
@@ -1091,7 +1102,7 @@ async function getCurrentUser(discordId) {
 }
 
 async function getSiteConfig() {
-  const result = await query('SELECT key, value FROM site_settings');
+  const result = await query('SELECT `key`, `value` FROM site_settings');
   const saved = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
   if (saved.status_description === 'Disponibilité du proxy et des serveurs Trizone sur les 20 dernières minutes.') {
     saved.status_description = 'Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.';
@@ -1110,7 +1121,7 @@ function legalShopReadiness(config = {}) {
   return { ready: missing.length === 0, missing };
 }
 
-app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '3.3.7' }));
+app.get('/health', (_req, res) => res.json({ ok: true, service: 'trizone-site', version: '4.0.0-mysql' }));
 
 app.get('/api/server-status', async (_req, res) => {
   let config = {};
@@ -1191,10 +1202,10 @@ app.get('/auth/discord/callback', sensitiveLimiter, async (req, res) => {
     await query(
       `INSERT INTO users(discord_id, discord_username, discord_global_name, discord_avatar, last_login_at)
        VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (discord_id) DO UPDATE SET
-         discord_username = EXCLUDED.discord_username,
-         discord_global_name = EXCLUDED.discord_global_name,
-         discord_avatar = EXCLUDED.discord_avatar,
+       ON DUPLICATE KEY UPDATE
+         discord_username = VALUES(discord_username),
+         discord_global_name = VALUES(discord_global_name),
+         discord_avatar = VALUES(discord_avatar),
          last_login_at = NOW()`,
       [user.id, user.username, user.global_name || null, discordAvatarUrl(user)]
     );
@@ -1251,7 +1262,7 @@ app.post('/api/account/link-code', requireAuth, sensitiveLimiter, async (req, re
     await query('DELETE FROM link_codes WHERE discord_id = $1 OR expires_at < NOW()', [req.session.discordId]);
     await query(
       `INSERT INTO link_codes(code, discord_id, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
+       VALUES ($1, $2, NOW() + INTERVAL 10 MINUTE)`,
       [code, req.session.discordId]
     );
     res.json({ code, expiresInSeconds: 600 });
@@ -1287,10 +1298,10 @@ app.post('/api/minecraft/link/confirm', requireMinecraftSecret, sensitiveLimiter
       await client.query(
         `INSERT INTO minecraft_accounts(discord_id, minecraft_uuid, minecraft_username, minecraft_rank, updated_at)
          VALUES ($1, $2, $3, $4, NOW())
-         ON CONFLICT (discord_id) DO UPDATE SET
-           minecraft_uuid = EXCLUDED.minecraft_uuid,
-           minecraft_username = EXCLUDED.minecraft_username,
-           minecraft_rank = EXCLUDED.minecraft_rank,
+         ON DUPLICATE KEY UPDATE
+           minecraft_uuid = VALUES(minecraft_uuid),
+           minecraft_username = VALUES(minecraft_username),
+           minecraft_rank = VALUES(minecraft_rank),
            updated_at = NOW()`,
         [discordId, uuid, username, rank]
       );
@@ -1319,14 +1330,17 @@ app.post('/api/minecraft/profile-sync', requireMinecraftSecret, sensitiveLimiter
     if (!/^[0-9a-fA-F-]{32,36}$/.test(uuid) || !/^[A-Za-z0-9_.+*\-]{1,32}$/.test(username)) {
       return res.status(400).json({ error: 'Données invalides.' });
     }
-    const result = await query(
+    const linked = await query(
+      `SELECT discord_id FROM minecraft_accounts WHERE minecraft_uuid = $1 LIMIT 1`,
+      [uuid]
+    );
+    if (!linked.rowCount) return res.status(404).json({ error: 'Ce compte Minecraft n’est pas encore lié au site.' });
+    await query(
       `UPDATE minecraft_accounts
        SET minecraft_username = $2, minecraft_rank = $3, updated_at = NOW()
-       WHERE minecraft_uuid = $1
-       RETURNING discord_id`,
+       WHERE minecraft_uuid = $1`,
       [uuid, username, rank]
     );
-    if (!result.rowCount) return res.status(404).json({ error: 'Ce compte Minecraft n’est pas encore lié au site.' });
     res.json({ ok: true, rank });
   } catch (error) {
     console.error('[minecraft profile sync]', error);
@@ -1337,18 +1351,24 @@ app.post('/api/minecraft/profile-sync', requireMinecraftSecret, sensitiveLimiter
 
 app.get('/api/minecraft/deliveries', requireMinecraftSecret, async (req, res) => {
   try {
-    const result = await query(
-      `UPDATE minecraft_deliveries
-       SET attempt_count = attempt_count + 1, last_attempt_at = NOW(), updated_at = NOW()
-       WHERE id IN (
-         SELECT id FROM minecraft_deliveries
-         WHERE status = 'pending'
-         ORDER BY created_at ASC
-         LIMIT 20
-       )
-       RETURNING id, minecraft_uuid, minecraft_username, target_rank, reason`,
+    const pending = await query(
+      `SELECT id, minecraft_uuid, minecraft_username, target_rank, reason
+       FROM minecraft_deliveries
+       WHERE status = 'pending'
+       ORDER BY created_at ASC
+       LIMIT 20`
     );
-    const rows = result.rows.sort((a, b) => Number(a.id) - Number(b.id));
+    const ids = pending.rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0);
+    if (ids.length) {
+      const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
+      await query(
+        `UPDATE minecraft_deliveries
+         SET attempt_count = attempt_count + 1, last_attempt_at = NOW(), updated_at = NOW()
+         WHERE id IN (${placeholders}) AND status = 'pending'`,
+        ids
+      );
+    }
+    const rows = pending.rows.sort((a, b) => Number(a.id) - Number(b.id));
     if (String(req.query.format || '').toLowerCase() === 'lines') {
       const lines = rows.map((row) => `${row.id}|${row.minecraft_uuid}|${row.minecraft_username}|${row.target_rank}`).join('\n');
       res.type('text/plain').send(lines ? `${lines}\n` : '');
@@ -1382,14 +1402,20 @@ app.post('/api/minecraft/deliveries/:id/ack', requireMinecraftSecret, async (req
     try {
       await client.query('BEGIN');
       const delivery = await client.query(
-        `UPDATE minecraft_deliveries
-         SET status = 'delivered', delivered_at = NOW(), last_error = NULL, updated_at = NOW()
+        `SELECT discord_id, minecraft_uuid, target_rank
+         FROM minecraft_deliveries
          WHERE id = $1 AND status = 'pending'
-         RETURNING discord_id, minecraft_uuid, target_rank`,
+         FOR UPDATE`,
         [id]
       );
       if (delivery.rowCount) {
         const row = delivery.rows[0];
+        await client.query(
+          `UPDATE minecraft_deliveries
+           SET status = 'delivered', delivered_at = NOW(), last_error = NULL, updated_at = NOW()
+           WHERE id = $1 AND status = 'pending'`,
+          [id]
+        );
         await client.query(
           `UPDATE minecraft_accounts
            SET minecraft_rank = $2, updated_at = NOW()
@@ -1506,7 +1532,13 @@ async function reconcileDuelKitsWithLobbyFile(db = null) {
   const run = db ? db.query.bind(db) : query;
   const keys = await getLobbyCanonicalKitKeys(db);
   if (!keys || !keys.length) return { applied: false, keys: [] };
-  await run(`UPDATE duel_kits SET active = (kit_key = ANY($1::text[])), updated_at = CASE WHEN active IS DISTINCT FROM (kit_key = ANY($1::text[])) THEN NOW() ELSE updated_at END`, [keys]);
+  const placeholders = keys.map((_, i) => `$${i + 1}`).join(',');
+  await run(
+    `UPDATE duel_kits
+     SET updated_at = CASE WHEN active <> (kit_key IN (${placeholders})) THEN NOW() ELSE updated_at END,
+         active = (kit_key IN (${placeholders}))`,
+    [...keys, ...keys]
+  );
   return { applied: true, keys };
 }
 
@@ -1535,12 +1567,12 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
       const emoji = String(row.emoji || '⚔').slice(0, 12);
       if (authoritative) {
         await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,active,updated_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW())
-          ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, active=TRUE, updated_at=NOW()`,
+          ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), emoji=VALUES(emoji), active=TRUE, updated_at=NOW()`,
           [key,name,icon,emoji,Number(row.order ?? i)]);
       } else {
         // Le Lobby peut annoncer un nouveau kit, mais ne peut pas reactiver un kit que le BACKEND a supprime.
         await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,active,updated_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW())
-          ON CONFLICT(kit_key) DO UPDATE SET display_name=EXCLUDED.display_name, emoji=EXCLUDED.emoji, updated_at=NOW()`,
+          ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), emoji=VALUES(emoji), updated_at=NOW()`,
           [key,name,icon,emoji,Number(row.order ?? i)]);
       }
     }
@@ -1548,11 +1580,13 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
     // Le snapshot BACKEND est la liste officielle des kits actuellement existants.
     // On garde les anciennes stats en base, mais les kits absents deviennent inactifs et disparaissent du site.
     if (canonicalKeys && canonicalKeys.length) {
+      const placeholders = canonicalKeys.map((_, i) => `$${i + 1}`).join(',');
       await client.query(`UPDATE duel_kits SET active=FALSE, updated_at=NOW()
-        WHERE active=TRUE AND NOT (kit_key = ANY($1::text[]))`, [canonicalKeys]);
+        WHERE active=TRUE AND kit_key NOT IN (${placeholders})`, canonicalKeys);
     } else if (authoritative && incomingKitKeys.length) {
+      const placeholders = incomingKitKeys.map((_, i) => `$${i + 1}`).join(',');
       await client.query(`UPDATE duel_kits SET active=FALSE, updated_at=NOW()
-        WHERE active=TRUE AND NOT (kit_key = ANY($1::text[]))`, [incomingKitKeys]);
+        WHERE active=TRUE AND kit_key NOT IN (${placeholders})`, incomingKitKeys);
     }
 
     // Seul PVPpractice (BACKEND) a le droit d'ecraser les ELO/stats.
@@ -1563,12 +1597,12 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
         const username = String(player?.username || uuid).slice(0, 32);
         const selected = normalizeKitKey(player?.selected_kit);
         if (selected) await client.query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW())
-          ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, selected_kit=EXCLUDED.selected_kit, updated_at=NOW()`, [uuid,username,selected]);
+          ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username), selected_kit=VALUES(selected_kit), updated_at=NOW()`, [uuid,username,selected]);
         const statRows = Array.isArray(player?.kits) ? player.kits : [];
         for (const st of statRows.slice(0,250)) {
           const kit = normalizeKitKey(st?.kit); if (!kit) continue;
           await client.query(`INSERT INTO duel_player_stats(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak,updated_at)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON CONFLICT(minecraft_uuid,kit_key) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username, elo=EXCLUDED.elo, wins=EXCLUDED.wins, losses=EXCLUDED.losses, kills=EXCLUDED.kills, deaths=EXCLUDED.deaths, streak=EXCLUDED.streak, best_streak=EXCLUDED.best_streak, updated_at=NOW()`,
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username), elo=VALUES(elo), wins=VALUES(wins), losses=VALUES(losses), kills=VALUES(kills), deaths=VALUES(deaths), streak=VALUES(streak), best_streak=VALUES(best_streak), updated_at=NOW()`,
             [uuid,username,kit,Number(st.elo||300),Number(st.wins||0),Number(st.losses||0),Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
         }
       }
@@ -1623,9 +1657,10 @@ app.post('/api/minecraft/duels/kits/icon', requireMinecraftSecret, minecraftSync
     const kit = normalizeKitKey(req.body?.kit);
     const icon = String(req.body?.icon || '').trim().toUpperCase().replace(/^MINECRAFT:/, '').replace(/[^A-Z0-9_]/g, '').slice(0, 64);
     if (!kit || !icon) return res.status(400).json({ error: 'Kit ou Material invalide.' });
-    const result = await query(`UPDATE duel_kits SET icon_material=$2, updated_at=NOW() WHERE kit_key=$1 AND active=TRUE RETURNING kit_key,display_name,icon_material`, [kit, icon]);
-    if (!result.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
-    res.json({ ok: true, kit: result.rows[0].kit_key, icon: result.rows[0].icon_material });
+    const exists = await query(`SELECT kit_key,display_name,icon_material FROM duel_kits WHERE kit_key=$1 AND active=TRUE LIMIT 1`, [kit]);
+    if (!exists.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
+    await query(`UPDATE duel_kits SET icon_material=$2, updated_at=NOW() WHERE kit_key=$1 AND active=TRUE`, [kit, icon]);
+    res.json({ ok: true, kit, icon });
   } catch (error) {
     console.error('[duels kit icon]', error);
     res.status(500).json({ error: 'Impossible de modifier l\'icône du kit.' });
@@ -1643,7 +1678,7 @@ app.post('/api/minecraft/duels/kits-file', requireMinecraftSecret, minecraftSync
     const source = String(req.get('X-Trizone-Source') || 'Lobby').slice(0, 80);
     await query(`INSERT INTO duel_sync_files(file_key,content,sha256,source_server,updated_at)
       VALUES('kits.yml',$1,$2,$3,NOW())
-      ON CONFLICT(file_key) DO UPDATE SET content=EXCLUDED.content,sha256=EXCLUDED.sha256,source_server=EXCLUDED.source_server,updated_at=NOW()`,
+      ON DUPLICATE KEY UPDATE content=VALUES(content),sha256=VALUES(sha256),source_server=VALUES(source_server),updated_at=NOW()`,
       [content, sha256, source]);
     const reconciled = await reconcileDuelKitsWithLobbyFile();
     res.json({ ok: true, sha256, bytes: Buffer.byteLength(content, 'utf8'), canonical_kits: reconciled.keys });
@@ -1747,7 +1782,7 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
     if (!uuid || !kit) return res.status(400).json({ error: 'UUID ou kit invalide.' });
     const exists = await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]); if (!exists.rowCount) return res.status(404).json({ error: 'Kit inconnu.' });
     const username = String(req.body?.username || '').slice(0,32) || null;
-    await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=COALESCE(EXCLUDED.minecraft_username,duel_player_settings.minecraft_username), selected_kit=EXCLUDED.selected_kit, updated_at=NOW()`,[uuid,username,kit]);
+    await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=COALESCE(VALUES(minecraft_username),minecraft_username), selected_kit=VALUES(selected_kit), updated_at=NOW()`,[uuid,username,kit]);
     res.json({ok:true,kit});
   } catch(error){ console.error('[duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder le kit affiché.'}); }
 });
@@ -1778,14 +1813,14 @@ app.get('/api/duels/leaderboard', async (req,res) => {
       rows=(await query(`
         WITH ${ctes}, all_kit_stats AS (
           SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
-                 COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,
-                 COALESCE(s.losses,0)::int AS losses,COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
+                 COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,
+                 COALESCE(s.losses,0) AS losses,COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
           FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
           LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
         ), agg AS (
-          SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo))::int,300) AS elo,
-                 COALESCE(SUM(wins),0)::int AS wins,COALESCE(SUM(losses),0)::int AS losses,
-                 COALESCE(SUM(kills),0)::int AS kills,COALESCE(SUM(deaths),0)::int AS deaths
+          SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo)),300) AS elo,
+                 COALESCE(SUM(wins),0) AS wins,COALESCE(SUM(losses),0) AS losses,
+                 COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths
           FROM all_kit_stats
           GROUP BY identity_key,minecraft_uuid,minecraft_username
         ), ranked AS (
@@ -1799,8 +1834,8 @@ app.get('/api/duels/leaderboard', async (req,res) => {
       rows=(await query(`
         WITH ${ctes}, base AS (
           SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
-                 COALESCE(s.elo,300)::int AS elo,COALESCE(s.wins,0)::int AS wins,
-                 COALESCE(s.losses,0)::int AS losses,COALESCE(s.kills,0)::int AS kills,COALESCE(s.deaths,0)::int AS deaths
+                 COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,
+                 COALESCE(s.losses,0) AS losses,COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
           FROM identities i LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=$1
         ), ranked AS (
           SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
@@ -1809,12 +1844,16 @@ app.get('/api/duels/leaderboard', async (req,res) => {
 
     const identityKeys=rows.map((r)=>r.identity_key);
     let badges=[];
-    if(identityKeys.length) badges=(await query(`
-      WITH ${ctes}, ids AS (SELECT UNNEST($1::text[]) AS identity_key)
-      SELECT ids.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,COALESCE(s.elo,300)::int AS elo
-      FROM ids CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
-      LEFT JOIN best_stats s ON s.identity_key=ids.identity_key AND s.kit_key=k.kit_key
-      ORDER BY ids.identity_key,k.sort_order,k.display_name`,[identityKeys])).rows;
+    if(identityKeys.length) {
+      const placeholders = identityKeys.map((_, i) => `$${i + 1}`).join(',');
+      badges=(await query(`
+        WITH ${ctes}
+        SELECT i.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,COALESCE(s.elo,300) AS elo
+        FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
+        LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
+        WHERE i.identity_key IN (${placeholders})
+        ORDER BY i.identity_key,k.sort_order,k.display_name`,identityKeys)).rows;
+    }
     const byPlayer=new Map();
     for(const b of badges){
       if(!byPlayer.has(b.identity_key)) byPlayer.set(b.identity_key,[]);
@@ -1834,7 +1873,7 @@ app.get('/api/account/duels', requireAuth, async (req,res) => {
 app.post('/api/account/duels/settings', requireAuth, sensitiveLimiter, async (req,res) => {
   try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.status(400).json({error:'Compte Minecraft non lié.'}); const kit=normalizeKitKey(req.body?.kit); if(!kit) return res.status(400).json({error:'Kit invalide.'});
     const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]); if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
-    await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username,selected_kit=EXCLUDED.selected_kit,updated_at=NOW()`,[me.minecraft_uuid,me.minecraft_username,kit]);
+    await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username),selected_kit=VALUES(selected_kit),updated_at=NOW()`,[me.minecraft_uuid,me.minecraft_username,kit]);
     res.json({ok:true,kit});
   } catch(error){ console.error('[account duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder ton kit affiché.'}); }
 });
@@ -1853,7 +1892,7 @@ app.post('/api/minecraft/game-sync', requireMinecraftSecret, minecraftSyncLimite
     const armor=Array.isArray(req.body?.armor)?req.body.armor.slice(0,8):[];
     const ender=Array.isArray(req.body?.ender_chest)?req.body.ender_chest.slice(0,40):[];
     const offhand=req.body?.offhand && typeof req.body.offhand==='object'?req.body.offhand:null;
-    await query(`INSERT INTO minecraft_game_data(minecraft_uuid,minecraft_username,source_server,inventory,armor,offhand,ender_chest,updated_at) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,NOW()) ON CONFLICT(minecraft_uuid) DO UPDATE SET minecraft_username=EXCLUDED.minecraft_username,source_server=EXCLUDED.source_server,inventory=EXCLUDED.inventory,armor=EXCLUDED.armor,offhand=EXCLUDED.offhand,ender_chest=EXCLUDED.ender_chest,updated_at=NOW()`,[uuid,username,source,JSON.stringify(inventory),JSON.stringify(armor),JSON.stringify(offhand),JSON.stringify(ender)]);
+    await query(`INSERT INTO minecraft_game_data(minecraft_uuid,minecraft_username,source_server,inventory,armor,offhand,ender_chest,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username),source_server=VALUES(source_server),inventory=VALUES(inventory),armor=VALUES(armor),offhand=VALUES(offhand),ender_chest=VALUES(ender_chest),updated_at=NOW()`,[uuid,username,source,JSON.stringify(inventory),JSON.stringify(armor),JSON.stringify(offhand),JSON.stringify(ender)]);
     res.json({ok:true,world:expectedWorld});
   } catch(error){ console.error('[game sync]',error); res.status(500).json({error:'Synchronisation inventaire impossible.'}); }
 });
@@ -1997,10 +2036,10 @@ app.put('/api/admin/duels/kits/order', requireAdmin, sensitiveLimiter, async (re
 
 app.get('/api/admin/stats', requireAdmin, async (_req, res) => {
   const [users, linked, payments, banned] = await Promise.all([
-    query('SELECT COUNT(*)::int AS count FROM users'),
-    query('SELECT COUNT(*)::int AS count FROM minecraft_accounts'),
-    query("SELECT COUNT(*)::int AS count FROM stripe_orders WHERE active = TRUE OR payment_status IN ('paid','refunded')"),
-    query('SELECT COUNT(*)::int AS count FROM users WHERE banned = TRUE'),
+    query('SELECT COUNT(*) AS count FROM users'),
+    query('SELECT COUNT(*) AS count FROM minecraft_accounts'),
+    query("SELECT COUNT(*) AS count FROM stripe_orders WHERE active = TRUE OR payment_status IN ('paid','refunded')"),
+    query('SELECT COUNT(*) AS count FROM users WHERE banned = TRUE'),
   ]);
   res.json({
     users: users.rows[0].count,
@@ -2227,9 +2266,9 @@ app.put('/api/admin/site-config', requireAdmin, sensitiveLimiter, async (req, re
       await client.query('BEGIN');
       for (const [key, value] of entries) {
         await client.query(
-          `INSERT INTO site_settings(key, value, updated_at)
+          `INSERT INTO site_settings(\`key\`, \`value\`, updated_at)
            VALUES ($1, $2, NOW())
-           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+           ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()`,
           [key, value]
         );
       }
@@ -2252,9 +2291,9 @@ app.put('/api/admin/site-config', requireAdmin, sensitiveLimiter, async (req, re
 app.put('/api/admin/announcement', requireAdmin, sensitiveLimiter, async (req, res) => {
   const value = String(req.body?.value || '').trim().slice(0, SITE_SETTINGS.announcement.max);
   await query(
-    `INSERT INTO site_settings(key, value, updated_at)
+    `INSERT INTO site_settings(\`key\`, \`value\`, updated_at)
      VALUES ('announcement', $1, NOW())
-     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+     ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()`,
     [value]
   );
   res.json({ ok: true, value });

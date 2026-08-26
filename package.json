@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "3.3.12",
+  "version": "4.0.0-mysql",
   "private": true,
-  "description": "Site officiel Trizone v3.3.7 : correctif des tooltips techniques sur les icônes Minecraft.",
+  "description": "Site officiel Trizone v4 - MySQL/MariaDB, compatible TrizoneDuels TrueFusion.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {
@@ -19,7 +19,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.1",
     "helmet": "^8.1.0",
-    "pg": "^8.16.3",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "mysql2": "^3.14.5"
   }
 }
