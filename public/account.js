@@ -100,15 +100,27 @@ function inventoryGrid(items, size, columns = 9) {
 }
 
 function duelTierClass(tier) {
-  return `duel-tier tier-${String(tier || 'LT5').toLowerCase()}`;
+  return `duel-tier tier-${String(tier || 'unranked').toLowerCase()}`;
+}
+
+function duelPlacement(stat) {
+  const required = Number(stat?.placement_games_required || 10);
+  const games = Number(stat?.games || (Number(stat?.wins || 0) + Number(stat?.losses || 0)));
+  return { required, games, remaining: Math.max(0, required - games), step: Math.min(10, Math.max(0, games)) };
 }
 
 function duelKitCard(stat, selected) {
-  return `<article class="duel-kit-card ${selected ? 'selected' : ''}" data-duel-kit="${Trizone.escapeHtml(stat.kit)}">
+  const p = duelPlacement(stat);
+  const rankLine = stat.ranked
+    ? `<div class="elo-line"><span class="${duelTierClass(stat.tier)}">${Trizone.escapeHtml(stat.tier)}</span><b>${Number(stat.elo)} ELO</b><span>#${Number(stat.placement || 0) || '—'}</span></div>`
+    : `<div class="elo-line elo-unranked"><span class="${duelTierClass('Unranked')}">UNRANKED</span><b>ELO masqué</b><span>${p.games}/${p.required} matchs</span></div>
+       <div class="placement-progress" aria-label="${p.games} matchs sur ${p.required}"><i class="progress-step-${p.step}"></i></div>
+       <small class="placement-copy">${p.remaining ? `${p.remaining} match${p.remaining > 1 ? 's' : ''} de placement restant${p.remaining > 1 ? 's' : ''}` : 'Placement terminé'}</small>`;
+  return `<article class="duel-kit-card ${selected ? 'selected' : ''} ${stat.ranked ? 'ranked' : 'unranked'}" data-duel-kit="${Trizone.escapeHtml(stat.kit)}">
     <div class="duel-kit-icon">${Trizone.minecraftIconHtml(stat.icon, stat.emoji || '⚔', 'mc-icon-card')}</div>
     <div class="duel-kit-main">
       <div class="duel-kit-title"><strong>${Trizone.escapeHtml(stat.name || stat.kit)}</strong>${selected ? '<span class="selected-label">Affiché</span>' : ''}</div>
-      <div class="elo-line"><span class="${duelTierClass(stat.tier)}">${Trizone.escapeHtml(stat.tier)}</span><b>${Number(stat.elo || 300)} ELO</b><span>#${Number(stat.placement || 0) || '—'}</span></div>
+      ${rankLine}
       <div class="duel-mini-stats"><span><b>${stat.wins}</b> wins</span><span><b>${stat.losses}</b> loses</span><span><b>${stat.kills}</b> kills</span><span><b>${stat.deaths}</b> deaths</span><span><b>${stat.kdr}</b> KDR</span><span><b>${stat.win_rate}%</b> WR</span><span><b>${stat.streak}</b> streak</span><span><b>${stat.best_streak}</b> best</span></div>
     </div>
     ${selected ? '' : `<button class="btn btn-quiet btn-small" type="button" data-select-duel-kit="${Trizone.escapeHtml(stat.kit)}">Afficher</button>`}
@@ -146,14 +158,24 @@ async function loadDuels() {
     const data = response.data;
     if (!data?.kits?.length) { root.innerHTML = '<p class="muted">Aucun duel synchronisé pour le moment. Les stats apparaîtront après la première synchronisation du serveur PvPpractice.</p>'; return; }
     const o = data.overall;
+    const op = duelPlacement(o);
     root.innerHTML = `
+      <div class="duel-rank-banner ${o.ranked ? 'is-ranked' : 'is-unranked'}">
+        <div class="duel-rank-mark">${o.ranked ? Trizone.escapeHtml(o.tier) : 'U'}</div>
+        <div class="duel-rank-info">
+          <span>${o.ranked ? 'RANKED' : 'MATCHS DE PLACEMENT'}</span>
+          <strong>${o.ranked ? `${o.elo} ELO · #${o.placement || '—'}` : 'UNRANKED · ELO masqué'}</strong>
+          <small>${o.ranked ? `${o.games} matchs classés enregistrés` : `${op.games}/${op.required} matchs · encore ${op.remaining} avant ton classement`}</small>
+        </div>
+        <div class="duel-rank-progress"><i class="progress-step-${op.step}"></i></div>
+      </div>
       <div class="duel-overall">
-        <div><span>Classement global</span><strong>#${o.placement || '—'}</strong></div>
-        <div><span>ELO moyen</span><strong>${o.elo} <em class="${duelTierClass(o.tier)}">${o.tier}</em></strong></div>
+        <div><span>Classement global</span><strong>${o.ranked ? `#${o.placement || '—'}` : 'Unranked'}</strong></div>
+        <div><span>ELO moyen</span><strong>${o.ranked ? `${o.elo} <em class="${duelTierClass(o.tier)}">${o.tier}</em>` : '<em class="duel-tier tier-unranked">MASQUÉ</em>'}</strong></div>
         <div><span>Victoires / Défaites</span><strong>${o.wins} / ${o.losses}</strong></div>
         <div><span>KDR</span><strong>${o.kdr}</strong></div>
       </div>
-      <div class="duel-selected-preview">Affichage actuel : ${(() => { const s=data.kits.find(k=>k.kit===data.selected_kit)||data.kits[0]; return `<b class="duel-preview-value">| ${Trizone.minecraftIconHtml(s.icon, s.emoji || '⚔', 'mc-icon-inline')} ${Trizone.escapeHtml(s.tier)} ${s.elo}</b>`; })()}</div>
+      <div class="duel-selected-preview">Affichage actuel : ${(() => { const s=data.kits.find(k=>k.kit===data.selected_kit)||data.kits[0]; const p=duelPlacement(s); return `<b class="duel-preview-value">| ${Trizone.minecraftIconHtml(s.icon, s.emoji || '⚔', 'mc-icon-inline')} ${s.ranked ? `${Trizone.escapeHtml(s.tier)} ${s.elo} ELO` : `UNRANKED ${p.games}/${p.required}`}</b>`; })()}</div>
       <div class="duel-kit-list">${data.kits.map((stat) => duelKitCard(stat, stat.kit === data.selected_kit)).join('')}</div>`;
     Trizone.bindMinecraftIcons(root);
     root.querySelectorAll('[data-select-duel-kit]').forEach((button) => button.addEventListener('click', async () => {
@@ -215,7 +237,7 @@ async function loadAccount() {
         <section class="panel"><div class="panel-head"><div><h3>Minecraft</h3><p>Le compte lié à ton profil Trizone.</p></div></div>
           ${u.minecraft_username ? `<div class="details-grid"><div><span>Pseudo</span><strong>${Trizone.escapeHtml(u.minecraft_username)}</strong></div><div><span>Grade</span><strong class="rank-text ${rankClass}">${Trizone.escapeHtml(rank)}</strong></div><div><span>UUID</span><strong class="mono">${Trizone.escapeHtml(u.minecraft_uuid)}</strong></div><div><span>Dernière synchro</span><strong>${fmtDate(u.updated_at)}</strong></div></div><div class="inline-actions"><button class="btn btn-quiet" id="generate-code" type="button">Changer de compte lié</button></div><p class="hint">Utilise <code>/link sync</code> sur le Lobby pour synchroniser grade + inventaire + Ender Chest.</p>` : `<p class="muted">Aucun compte Minecraft n’est encore lié.</p><button class="btn btn-primary" id="generate-code" type="button">Générer un code de liaison</button>`}
           <div id="link-code-box"></div></section>
-        <section class="panel duel-panel"><div class="panel-head"><div><h3>Statistiques de duel</h3><p>ELO séparé par kit, classement, wins / loses et KDR.</p></div><a class="btn btn-quiet btn-small" href="/leaderboard.html">Leaderboard</a></div><div id="duel-stats-root"><p class="muted">Chargement…</p></div></section>
+        <section class="panel duel-panel"><div class="panel-head"><div><h3>Statistiques de duel</h3><p>10 matchs de placement avant de révéler ton ELO. Classement séparé par kit, wins / loses et KDR.</p></div><a class="btn btn-quiet btn-small" href="/leaderboard.html">Leaderboard</a></div><div id="duel-stats-root"><p class="muted">Chargement…</p></div></section>
         <section class="panel inventory-panel"><div class="panel-head"><div><h3>Survie — inventaire & Ender Chest</h3><p>Uniquement l’inventaire du monde <b>world</b> sur le serveur Lobby.</p></div></div><div id="game-data-root"><p class="muted">Chargement…</p></div></section>
         <section class="panel"><div class="panel-head"><div><h3>Grade Discord</h3><p>Trizone-bot attribue automatiquement le rôle correspondant à ton grade payé via Stripe.</p></div></div><p class="hint">Le bot ne modifie que les rôles Default+, VIP, VIP+, Hero et Emperor configurés pour la boutique.</p><div class="inline-actions"><button class="btn btn-quiet" id="sync-discord-rank" type="button">Synchroniser mon rôle Discord</button><button class="btn btn-quiet" id="sync-minecraft-rank" type="button">Synchroniser mon grade Minecraft</button></div><div id="discord-rank-status"></div><div id="minecraft-rank-status"></div></section>
         <section class="panel"><div class="panel-head"><div><h3>Achats</h3><p>Historique des achats confirmés par les webhooks Stripe.</p></div><a class="btn btn-quiet btn-small" href="/shop.html">Boutique</a></div><div id="purchase-list"><p class="muted">Chargement…</p></div></section>

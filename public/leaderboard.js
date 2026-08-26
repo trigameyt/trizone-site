@@ -2,14 +2,18 @@ let leaderboardEntries = [];
 let activeKit = 'overall';
 let kitCatalog = [];
 
-function tierClass(tier) { return `tier-${String(tier || 'LT5').toLowerCase()}`; }
+function tierClass(tier) { return `tier-${String(tier || 'unranked').toLowerCase()}`; }
 function avatarClass(name) {
   let h = 0;
   for (const ch of String(name || 'Trizone')) h = (h * 31 + ch.charCodeAt(0)) % 12;
   return `avatar-c${h}`;
 }
 function renderBadges(kits) {
-  return (kits || []).slice(0, 12).map((k) => `<span class="lb-kit-badge ${tierClass(k.tier)}" title="${Trizone.escapeHtml(`${k.name}: ${k.elo} ELO`)}">${Trizone.minecraftIconHtml(k.icon, k.emoji || '⚔', 'mc-icon-badge')}<b>${Trizone.escapeHtml(k.tier)}</b></span>`).join('');
+  return (kits || []).slice(0, 12).map((k) => {
+    const title = k.ranked ? `${k.name}: ${k.elo} ELO` : `${k.name}: Unranked (${k.games || 0}/${k.placement_games_required || 10})`;
+    const label = k.ranked ? k.tier : 'U';
+    return `<span class="lb-kit-badge ${tierClass(k.ranked ? k.tier : 'Unranked')}" title="${Trizone.escapeHtml(title)}">${Trizone.minecraftIconHtml(k.icon, k.emoji || '⚔', 'mc-icon-badge')}<b>${Trizone.escapeHtml(label)}</b></span>`;
+  }).join('');
 }
 function row(entry) {
   const podiumMaterial = entry.position === 1 ? 'GOLD_INGOT' : entry.position === 2 ? 'IRON_INGOT' : entry.position === 3 ? 'COPPER_INGOT' : null;
@@ -29,7 +33,7 @@ function row(entry) {
 function applySearch() {
   const q = String(document.getElementById('leaderboard-search')?.value || '').trim().toLowerCase();
   const filtered = q ? leaderboardEntries.filter((e) => String(e.username).toLowerCase().includes(q)) : leaderboardEntries;
-  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : `<div class="empty-state lb-empty"><div class="lb-empty-icon">${Trizone.minecraftIconHtml('NETHER_STAR', '', 'mc-icon-empty')}</div><h2>Aucun joueur</h2><p>Aucun résultat pour cette recherche.</p></div>`;
+  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : `<div class="empty-state lb-empty"><div class="lb-empty-icon">${Trizone.minecraftIconHtml('NETHER_STAR', '', 'mc-icon-empty')}</div><h2>Aucun joueur Ranked</h2><p>Il faut terminer 10 matchs de placement pour apparaître ici.</p></div>`;
   Trizone.bindMinecraftIcons(document.getElementById('leaderboard-root'));
 }
 async function loadLeaderboard(kit) {
@@ -40,7 +44,7 @@ async function loadLeaderboard(kit) {
   const title = document.getElementById('leaderboard-title');
   title.innerHTML = `${Trizone.minecraftIconHtml(info.icon || 'BARRIER', '', 'mc-icon-title')} ${Trizone.escapeHtml(info.name)}`;
   Trizone.bindMinecraftIcons(title);
-  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement par ELO moyen · 300 ELO minimum' : `Classement ${info.name} · chaque joueur commence à 300 ELO`;
+  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement Ranked · 10 matchs de placement requis' : `Classement ${info.name} · ELO visible après 10 matchs`;
   try {
     const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`);
     leaderboardEntries = data.entries || [];

@@ -989,6 +989,7 @@ async function resolveDuelIdentity(identity) {
   return { identityKey: duelIdentityKeyFrom(row.minecraft_username,row.minecraft_uuid), uuid: row.minecraft_uuid, username: row.minecraft_username };
 }
 
+const DUEL_PLACEMENT_GAMES = 10;
 const DUEL_TIER_ORDER = ['LT5','HT5','LT4','HT4','LT3','HT3','LT2','HT2','LT1','HT1'];
 const DUEL_TIER_DEFAULTS = Object.freeze({LT5:300,HT5:350,LT4:400,HT4:450,LT3:500,HT3:600,LT2:800,HT2:1000,LT1:1250,HT1:1500});
 let duelTierThresholds = { ...DUEL_TIER_DEFAULTS };
@@ -1036,30 +1037,41 @@ async function duelPlayerPayload(identity) {
         SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,
                COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses,
                COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths,COALESCE(s.streak,0) AS streak,
-               COALESCE(s.best_streak,0) AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played
+               COALESCE(s.best_streak,0) AS best_streak,s.updated_at,(s.minecraft_uuid IS NOT NULL) AS played,
+               (COALESCE(s.wins,0)+COALESCE(s.losses,0)) AS games
         FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
-      ), ranked AS (
-        SELECT *,RANK() OVER (PARTITION BY kit_key ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
-      ) SELECT * FROM ranked WHERE identity_key=$1 ORDER BY sort_order,display_name
+      ), ranked_only AS (
+        SELECT identity_key,kit_key,RANK() OVER (PARTITION BY kit_key ORDER BY elo DESC,wins DESC,losses ASC) AS placement
+        FROM base WHERE games >= ${DUEL_PLACEMENT_GAMES}
+      )
+      SELECT b.*,COALESCE(r.placement,0) AS placement
+      FROM base b LEFT JOIN ranked_only r ON r.identity_key=b.identity_key AND r.kit_key=b.kit_key
+      WHERE b.identity_key=$1 ORDER BY b.sort_order,b.display_name
     `, [identityKey]),
     query(`SELECT kit_key,display_name,icon_material,emoji,sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`),
     query(`
       WITH ${ctes}, all_kit_stats AS (
-        SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
-               COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses,
-               COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
-        FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
-        LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
+        SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
+               s.elo,s.wins,s.losses,s.kills,s.deaths
+        FROM identities i
+        LEFT JOIN best_stats s ON s.identity_key=i.identity_key
+          AND EXISTS (SELECT 1 FROM duel_kits k WHERE k.kit_key=s.kit_key AND k.active=TRUE)
       ), agg AS (
-        SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo)),300) AS elo,
+        SELECT identity_key,minecraft_uuid,minecraft_username,
+               COALESCE(ROUND(AVG(elo)),300) AS elo,
                COALESCE(SUM(wins),0) AS wins,COALESCE(SUM(losses),0) AS losses,
-               COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths
+               COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths,
+               COALESCE(SUM(wins+losses),0) AS games
         FROM all_kit_stats
         GROUP BY identity_key,minecraft_uuid,minecraft_username
-      ), ranked AS (
-        SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM agg
-      ) SELECT * FROM ranked WHERE identity_key=$1
+      ), ranked_only AS (
+        SELECT identity_key,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement
+        FROM agg WHERE games >= ${DUEL_PLACEMENT_GAMES}
+      )
+      SELECT a.*,COALESCE(r.placement,0) AS placement
+      FROM agg a LEFT JOIN ranked_only r ON r.identity_key=a.identity_key
+      WHERE a.identity_key=$1
     `, [identityKey])
   ]);
 
@@ -1069,21 +1081,34 @@ async function duelPlayerPayload(identity) {
   const statsByKit = new Map(rows.rows.map((row) => [row.kit_key,row]));
   const kits = catalog.rows.map((kit) => {
     const row = statsByKit.get(kit.kit_key);
-    const elo=Number(row?.elo ?? 300), wins=Number(row?.wins ?? 0), losses=Number(row?.losses ?? 0), kills=Number(row?.kills ?? 0), deaths=Number(row?.deaths ?? 0);
+    const rawElo=Number(row?.elo ?? 300), wins=Number(row?.wins ?? 0), losses=Number(row?.losses ?? 0), kills=Number(row?.kills ?? 0), deaths=Number(row?.deaths ?? 0);
+    const games = wins + losses;
+    const ranked = games >= DUEL_PLACEMENT_GAMES;
     return {
-      kit:kit.kit_key,name:kit.display_name,icon:kit.icon_material,emoji:kit.emoji,elo,tier:duelTier(elo),wins,losses,kills,deaths,
-      kdr:duelKdr(kills,deaths),win_rate:(wins+losses)?Math.round(wins/(wins+losses)*10000)/100:0,
-      streak:Number(row?.streak ?? 0),best_streak:Number(row?.best_streak ?? 0),placement:Number(row?.placement ?? 0),
+      kit:kit.kit_key,name:kit.display_name,icon:kit.icon_material,emoji:kit.emoji,
+      elo:ranked ? rawElo : null,tier:ranked ? duelTier(rawElo) : 'Unranked',ranked,
+      games,placement_games_required:DUEL_PLACEMENT_GAMES,games_remaining:Math.max(0,DUEL_PLACEMENT_GAMES-games),
+      wins,losses,kills,deaths,kdr:duelKdr(kills,deaths),win_rate:games?Math.round(wins/games*10000)/100:0,
+      streak:Number(row?.streak ?? 0),best_streak:Number(row?.best_streak ?? 0),placement:ranked?Number(row?.placement ?? 0):0,
       played:Boolean(row?.played),updated_at:row?.updated_at || null
     };
   });
 
   if (!kits.length && !rows.rowCount && !overallRank.rowCount) return null;
-  const o=overallRank.rows[0] || {elo:300,wins:0,losses:0,kills:0,deaths:0,placement:0};
+  const o=overallRank.rows[0] || {elo:300,wins:0,losses:0,kills:0,deaths:0,placement:0,games:0};
+  const overallGames = Number(o.games || (Number(o.wins||0)+Number(o.losses||0)));
+  const overallRanked = overallGames >= DUEL_PLACEMENT_GAMES;
   const selected=settings.rows[0]?.selected_kit;
   return {
-    uuid,username,identity_key:identityKey,selected_kit:kits.some((kit)=>kit.kit===selected)?selected:(kits[0]?.kit||null),
-    overall:{elo:Number(o.elo||300),tier:duelTier(o.elo||300),wins:Number(o.wins||0),losses:Number(o.losses||0),kills:Number(o.kills||0),deaths:Number(o.deaths||0),kdr:duelKdr(o.kills,o.deaths),placement:Number(o.placement||0)},
+    uuid,username,identity_key:identityKey,placement_games_required:DUEL_PLACEMENT_GAMES,
+    selected_kit:kits.some((kit)=>kit.kit===selected)?selected:(kits[0]?.kit||null),
+    overall:{
+      elo:overallRanked ? Number(o.elo||300) : null,
+      tier:overallRanked ? duelTier(o.elo||300) : 'Unranked',ranked:overallRanked,
+      games:overallGames,placement_games_required:DUEL_PLACEMENT_GAMES,games_remaining:Math.max(0,DUEL_PLACEMENT_GAMES-overallGames),
+      wins:Number(o.wins||0),losses:Number(o.losses||0),kills:Number(o.kills||0),deaths:Number(o.deaths||0),
+      kdr:duelKdr(o.kills,o.deaths),placement:overallRanked?Number(o.placement||0):0
+    },
     kits
   };
 }
@@ -1812,19 +1837,22 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     if(kitRaw==='overall') {
       rows=(await query(`
         WITH ${ctes}, all_kit_stats AS (
-          SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,k.kit_key,
-                 COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,
-                 COALESCE(s.losses,0) AS losses,COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
-          FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
-          LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
+          SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
+                 s.elo,s.wins,s.losses,s.kills,s.deaths
+          FROM identities i
+          LEFT JOIN best_stats s ON s.identity_key=i.identity_key
+            AND EXISTS (SELECT 1 FROM duel_kits k WHERE k.kit_key=s.kit_key AND k.active=TRUE)
         ), agg AS (
-          SELECT identity_key,minecraft_uuid,minecraft_username,COALESCE(ROUND(AVG(elo)),300) AS elo,
+          SELECT identity_key,minecraft_uuid,minecraft_username,
+                 COALESCE(ROUND(AVG(elo)),300) AS elo,
                  COALESCE(SUM(wins),0) AS wins,COALESCE(SUM(losses),0) AS losses,
-                 COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths
+                 COALESCE(SUM(kills),0) AS kills,COALESCE(SUM(deaths),0) AS deaths,
+                 COALESCE(SUM(wins+losses),0) AS games
           FROM all_kit_stats
           GROUP BY identity_key,minecraft_uuid,minecraft_username
         ), ranked AS (
-          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM agg
+          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement
+          FROM agg WHERE games >= ${DUEL_PLACEMENT_GAMES}
         ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $1`,[limit])).rows;
     } else {
       const kit=normalizeKitKey(kitRaw);
@@ -1834,9 +1862,10 @@ app.get('/api/duels/leaderboard', async (req,res) => {
       rows=(await query(`
         WITH ${ctes}, base AS (
           SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
-                 COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,
-                 COALESCE(s.losses,0) AS losses,COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths
-          FROM identities i LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=$1
+                 s.elo,s.wins,s.losses,s.kills,s.deaths,(s.wins+s.losses) AS games
+          FROM identities i
+          JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=$1
+          WHERE (s.wins+s.losses) >= ${DUEL_PLACEMENT_GAMES}
         ), ranked AS (
           SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
         ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $2`,[kit,limit])).rows;
@@ -1848,7 +1877,8 @@ app.get('/api/duels/leaderboard', async (req,res) => {
       const placeholders = identityKeys.map((_, i) => `$${i + 1}`).join(',');
       badges=(await query(`
         WITH ${ctes}
-        SELECT i.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,COALESCE(s.elo,300) AS elo
+        SELECT i.identity_key,k.kit_key,k.display_name,k.icon_material,k.emoji,k.sort_order,
+               COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses
         FROM identities i CROSS JOIN (SELECT * FROM duel_kits WHERE active=TRUE) k
         LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=k.kit_key
         WHERE i.identity_key IN (${placeholders})
@@ -1857,10 +1887,16 @@ app.get('/api/duels/leaderboard', async (req,res) => {
     const byPlayer=new Map();
     for(const b of badges){
       if(!byPlayer.has(b.identity_key)) byPlayer.set(b.identity_key,[]);
-      byPlayer.get(b.identity_key).push({kit:b.kit_key,name:b.display_name,icon:b.icon_material,emoji:b.emoji,elo:Number(b.elo),tier:duelTier(b.elo)});
+      const games=Number(b.wins||0)+Number(b.losses||0);
+      const ranked=games>=DUEL_PLACEMENT_GAMES;
+      byPlayer.get(b.identity_key).push({
+        kit:b.kit_key,name:b.display_name,icon:b.icon_material,emoji:b.emoji,
+        elo:ranked?Number(b.elo):null,tier:ranked?duelTier(b.elo):'Unranked',ranked,games,
+        placement_games_required:DUEL_PLACEMENT_GAMES,games_remaining:Math.max(0,DUEL_PLACEMENT_GAMES-games)
+      });
     }
-    res.json({kit:kitRaw,entries:rows.map((r)=>(
-      {position:Number(r.placement||0),uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.identity_key)||[]}
+    res.json({kit:kitRaw,placement_games_required:DUEL_PLACEMENT_GAMES,entries:rows.map((r)=>(
+      {position:Number(r.placement||0),uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),ranked:true,games:Number(r.games||0),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.identity_key)||[]}
     ))});
   } catch(error){ console.error('[duels leaderboard]',error); res.status(500).json({error:'Impossible de charger le leaderboard.'}); }
 });
@@ -2297,6 +2333,17 @@ app.put('/api/admin/announcement', requireAdmin, sensitiveLimiter, async (req, r
     [value]
   );
   res.json({ ok: true, value });
+});
+
+// Défense en profondeur : même si un fichier sensible est copié par erreur dans public/,
+// il ne doit jamais être servi par le site.
+app.use((req, res, next) => {
+  const p = String(req.path || '').toLowerCase();
+  const blockedExact = new Set(['/server.js','/package.json','/package-lock.json','/render.yaml','/.env','/.env.example','/.gitignore']);
+  if (blockedExact.has(p) || p.startsWith('/.git/') || p.startsWith('/src/') || p.startsWith('/database/')) {
+    return res.status(404).end();
+  }
+  next();
 });
 
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));

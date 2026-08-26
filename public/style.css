@@ -840,3 +840,53 @@ td small { color: var(--muted); margin-top: 3px; }
   .admin-console-form { grid-template-columns: auto 1fr; }
   .admin-console-form .btn { grid-column: 1 / -1; }
 }
+
+
+/* ===== v4.1 : Ranked placements + identité Trizone violette ===== */
+.tier-unranked { color:#c79aff !important; text-shadow:0 0 18px rgba(164,84,255,.22); }
+.duel-panel {
+  border-color:#4e2d66;
+  background:radial-gradient(circle at 90% -15%,rgba(171,77,255,.14),transparent 36%),linear-gradient(180deg,rgba(108,45,155,.08),rgba(14,11,18,.98) 26%);
+  box-shadow:0 18px 55px rgba(83,26,124,.13),inset 0 1px 0 rgba(255,255,255,.025);
+}
+.duel-rank-banner {
+  position:relative; display:grid; grid-template-columns:58px minmax(0,1fr); gap:13px; align-items:center;
+  padding:14px 15px 18px; margin-bottom:12px; overflow:hidden;
+  border:1px solid #593373; border-radius:13px;
+  background:linear-gradient(115deg,rgba(112,42,166,.23),rgba(27,14,36,.94) 50%,rgba(77,29,112,.13));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 10px 28px rgba(72,22,105,.12);
+}
+.duel-rank-banner::after { content:""; position:absolute; width:190px; height:190px; right:-70px; top:-110px; border-radius:50%; background:radial-gradient(circle,rgba(190,91,255,.2),transparent 65%); pointer-events:none; }
+.duel-rank-mark { width:52px; height:52px; border:1px solid #8150a4; border-radius:12px; display:grid; place-items:center; color:#f3dcff; font-weight:1000; font-size:1.15rem; background:linear-gradient(145deg,#2b1538,#160c1d); box-shadow:0 0 24px rgba(166,79,255,.13),inset 0 0 20px rgba(177,88,255,.08); }
+.duel-rank-info { min-width:0; display:grid; gap:2px; }
+.duel-rank-info > span { color:#b78ecb; font-size:.62rem; font-weight:950; letter-spacing:.14em; }
+.duel-rank-info > strong { color:#fff; font-size:1.04rem; }
+.duel-rank-info > small { color:#95859f; font-size:.72rem; }
+.duel-rank-progress { position:absolute; height:4px; left:0; right:0; bottom:0; background:#211627; overflow:hidden; }
+.duel-rank-progress > i,.placement-progress > i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#7135ff,#be63ff,#e09cff); box-shadow:0 0 14px rgba(185,83,255,.55); }
+.duel-rank-banner.is-ranked { border-color:#75449b; background:linear-gradient(115deg,rgba(126,52,190,.26),rgba(28,14,38,.95) 52%,rgba(104,42,157,.15)); }
+.duel-overall > div { border-color:#382642; background:linear-gradient(145deg,#100b15,#0c0910); }
+.duel-kit-card { border-color:#35243f; background:linear-gradient(105deg,#100c14,#0c0910); }
+.duel-kit-card:hover { border-color:#543568; }
+.duel-kit-card.selected { border-color:#8c51b3; background:linear-gradient(105deg,rgba(105,42,151,.19),#100b15 45%); box-shadow:inset 3px 0 0 #b75cff; }
+.duel-kit-card.unranked { border-style:solid; }
+.elo-unranked b { color:#d5c6dc; }
+.placement-progress { width:min(360px,100%); height:4px; margin-top:7px; border-radius:999px; overflow:hidden; background:#291a31; }
+.placement-copy { display:block; margin-top:5px; color:#8e7b98; font-size:.65rem; }
+.duel-selected-preview { border-color:#603879; background:linear-gradient(90deg,rgba(111,43,158,.14),#0e0a12); }
+.leaderboard-shell { border-color:#54306a; background:#0c0910; box-shadow:0 20px 60px rgba(75,22,110,.14); }
+.leaderboard-tabs { background:linear-gradient(180deg,#1a1021,#0f0a14); border-bottom-color:#482858; }
+.lb-tab.active { border-bottom-color:#c665ff; background:linear-gradient(180deg,rgba(150,61,220,.28),rgba(102,36,153,.08)); box-shadow:inset 0 -10px 26px rgba(167,73,240,.08); }
+.leaderboard-toolbar { border-bottom-color:#432650; background:linear-gradient(90deg,rgba(130,47,190,.15),transparent 46%); }
+.leaderboard-row { border-color:#312039; background:linear-gradient(90deg,#140d19,#0d0911); }
+.leaderboard-row:hover { border-color:#624078; background:linear-gradient(90deg,#1a1021,#0f0a14); }
+.lb-kit-badge.tier-unranked { color:#bd8be0 !important; border-color:#68427b; background:linear-gradient(145deg,#1b1022,#0d0911); }
+.lb-elo-chip { background:#0d0811; box-shadow:inset 0 0 12px rgba(255,255,255,.02); }
+
+@media (max-width:560px) {
+  .duel-rank-banner { grid-template-columns:48px minmax(0,1fr); padding:12px 12px 17px; }
+  .duel-rank-mark { width:44px; height:44px; }
+  .duel-rank-info > strong { font-size:.92rem; }
+}
+
+.progress-step-0{width:0}.progress-step-1{width:10%}.progress-step-2{width:20%}.progress-step-3{width:30%}.progress-step-4{width:40%}.progress-step-5{width:50%}.progress-step-6{width:60%}.progress-step-7{width:70%}.progress-step-8{width:80%}.progress-step-9{width:90%}.progress-step-10{width:100%}

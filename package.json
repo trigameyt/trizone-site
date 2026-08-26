@@ -1,8 +1,8 @@
 {
   "name": "trizone-site",
-  "version": "4.0.0-mysql",
+  "version": "4.1.0-ranked",
   "private": true,
-  "description": "Site officiel Trizone v4 - MySQL/MariaDB, compatible TrizoneDuels TrueFusion.",
+  "description": "Site officiel Trizone v4.1 - MySQL/MariaDB, Ranked après 10 matchs de placement.",
   "main": "server.js",
   "type": "commonjs",
   "engines": {
