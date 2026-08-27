@@ -113,7 +113,7 @@ function duelKitCard(stat, selected) {
   const p = duelPlacement(stat);
   const rankLine = stat.ranked
     ? `<div class="elo-line"><span class="${duelTierClass(stat.tier)}">${Trizone.escapeHtml(stat.tier)}</span><b>${Number(stat.elo)} ELO</b><span>#${Number(stat.placement || 0) || '—'}</span></div>`
-    : `<div class="elo-line elo-unranked"><span class="${duelTierClass('Unranked')}">UNRANKED</span><b>ELO masqué</b><span>${p.games}/${p.required} matchs</span></div>
+    : `<div class="elo-line elo-unranked"><span class="${duelTierClass('Unranked')}">UNRANKED</span><b>${p.games}/${p.required} matchs</b><span>placement</span></div>
        <div class="placement-progress" aria-label="${p.games} matchs sur ${p.required}"><i class="progress-step-${p.step}"></i></div>
        <small class="placement-copy">${p.remaining ? `${p.remaining} match${p.remaining > 1 ? 's' : ''} de placement restant${p.remaining > 1 ? 's' : ''}` : 'Placement terminé'}</small>`;
   return `<article class="duel-kit-card ${selected ? 'selected' : ''} ${stat.ranked ? 'ranked' : 'unranked'}" data-duel-kit="${Trizone.escapeHtml(stat.kit)}">
@@ -164,14 +164,14 @@ async function loadDuels() {
         <div class="duel-rank-mark">${o.ranked ? Trizone.escapeHtml(o.tier) : 'U'}</div>
         <div class="duel-rank-info">
           <span>${o.ranked ? 'RANKED' : 'MATCHS DE PLACEMENT'}</span>
-          <strong>${o.ranked ? `${o.elo} ELO · #${o.placement || '—'}` : 'UNRANKED · ELO masqué'}</strong>
+          <strong>${o.ranked ? `${o.elo} ELO · #${o.placement || '—'}` : 'UNRANKED'}</strong>
           <small>${o.ranked ? `${o.games} matchs classés enregistrés` : `${op.games}/${op.required} matchs · encore ${op.remaining} avant ton classement`}</small>
         </div>
         <div class="duel-rank-progress"><i class="progress-step-${op.step}"></i></div>
       </div>
       <div class="duel-overall">
         <div><span>Classement global</span><strong>${o.ranked ? `#${o.placement || '—'}` : 'Unranked'}</strong></div>
-        <div><span>ELO moyen</span><strong>${o.ranked ? `${o.elo} <em class="${duelTierClass(o.tier)}">${o.tier}</em>` : '<em class="duel-tier tier-unranked">MASQUÉ</em>'}</strong></div>
+        <div><span>ELO moyen</span><strong>${o.ranked ? `${o.elo} <em class="${duelTierClass(o.tier)}">${o.tier}</em>` : '<em class="duel-tier tier-unranked">UNRANKED</em>'}</strong></div>
         <div><span>Victoires / Défaites</span><strong>${o.wins} / ${o.losses}</strong></div>
         <div><span>KDR</span><strong>${o.kdr}</strong></div>
       </div>

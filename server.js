@@ -1568,6 +1568,35 @@ async function reconcileDuelKitsWithLobbyFile(db = null) {
 }
 
 // ---- Duels v3 : kits dynamiques, ELO par kit, profils et leaderboard ----
+app.post('/api/minecraft/duels/player-clear', requireMinecraftSecret, sensitiveLimiter, async (req, res) => {
+  const uuid = normalizeUuid(req.body?.uuid);
+  const username = String(req.body?.username || '').trim().slice(0, 32);
+  if (!uuid && !username) return res.status(400).json({ error: 'UUID ou pseudo requis.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const stats = uuid && username
+      ? await client.query('DELETE FROM duel_player_stats WHERE minecraft_uuid=$1 OR LOWER(minecraft_username)=LOWER($2)', [uuid, username])
+      : uuid
+        ? await client.query('DELETE FROM duel_player_stats WHERE minecraft_uuid=$1', [uuid])
+        : await client.query('DELETE FROM duel_player_stats WHERE LOWER(minecraft_username)=LOWER($1)', [username]);
+    const settings = uuid && username
+      ? await client.query('DELETE FROM duel_player_settings WHERE minecraft_uuid=$1 OR LOWER(COALESCE(minecraft_username,\'\'))=LOWER($2)', [uuid, username])
+      : uuid
+        ? await client.query('DELETE FROM duel_player_settings WHERE minecraft_uuid=$1', [uuid])
+        : await client.query('DELETE FROM duel_player_settings WHERE LOWER(COALESCE(minecraft_username,\'\'))=LOWER($1)', [username]);
+    await client.query('COMMIT');
+    res.json({ ok: true, uuid: uuid || null, username: username || null, deleted_stats: stats.rowCount, deleted_settings: settings.rowCount });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('[duels player clear]', error);
+    res.status(500).json({ error: 'Impossible de supprimer les données Duels du joueur.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
   const sourceMode = String(req.body?.source_mode || 'LEGACY').trim().toUpperCase();
   const authoritative = sourceMode === 'BACKEND';
@@ -1850,10 +1879,16 @@ app.get('/api/duels/leaderboard', async (req,res) => {
                  COALESCE(SUM(wins+losses),0) AS games
           FROM all_kit_stats
           GROUP BY identity_key,minecraft_uuid,minecraft_username
-        ), ranked AS (
-          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement
+        ), ranked_positions AS (
+          SELECT identity_key,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement
           FROM agg WHERE games >= ${DUEL_PLACEMENT_GAMES}
-        ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $1`,[limit])).rows;
+        )
+        SELECT a.*,COALESCE(r.placement,0) AS placement
+        FROM agg a LEFT JOIN ranked_positions r ON r.identity_key=a.identity_key
+        ORDER BY (a.games >= ${DUEL_PLACEMENT_GAMES}) DESC,
+                 CASE WHEN a.games >= ${DUEL_PLACEMENT_GAMES} THEN a.elo ELSE a.games END DESC,
+                 a.wins DESC,a.losses ASC,a.minecraft_username
+        LIMIT $1`,[limit])).rows;
     } else {
       const kit=normalizeKitKey(kitRaw);
       if(!kit) return res.status(400).json({error:'Kit invalide.'});
@@ -1862,13 +1897,21 @@ app.get('/api/duels/leaderboard', async (req,res) => {
       rows=(await query(`
         WITH ${ctes}, base AS (
           SELECT i.identity_key,i.minecraft_uuid,i.minecraft_username,
-                 s.elo,s.wins,s.losses,s.kills,s.deaths,(s.wins+s.losses) AS games
+                 COALESCE(s.elo,300) AS elo,COALESCE(s.wins,0) AS wins,COALESCE(s.losses,0) AS losses,
+                 COALESCE(s.kills,0) AS kills,COALESCE(s.deaths,0) AS deaths,
+                 (COALESCE(s.wins,0)+COALESCE(s.losses,0)) AS games
           FROM identities i
-          JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=$1
-          WHERE (s.wins+s.losses) >= ${DUEL_PLACEMENT_GAMES}
-        ), ranked AS (
-          SELECT *,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement FROM base
-        ) SELECT * FROM ranked ORDER BY placement,minecraft_username LIMIT $2`,[kit,limit])).rows;
+          LEFT JOIN best_stats s ON s.identity_key=i.identity_key AND s.kit_key=$1
+        ), ranked_positions AS (
+          SELECT identity_key,RANK() OVER (ORDER BY elo DESC,wins DESC,losses ASC) AS placement
+          FROM base WHERE games >= ${DUEL_PLACEMENT_GAMES}
+        )
+        SELECT b.*,COALESCE(r.placement,0) AS placement
+        FROM base b LEFT JOIN ranked_positions r ON r.identity_key=b.identity_key
+        ORDER BY (b.games >= ${DUEL_PLACEMENT_GAMES}) DESC,
+                 CASE WHEN b.games >= ${DUEL_PLACEMENT_GAMES} THEN b.elo ELSE b.games END DESC,
+                 b.wins DESC,b.losses ASC,b.minecraft_username
+        LIMIT $2`,[kit,limit])).rows;
     }
 
     const identityKeys=rows.map((r)=>r.identity_key);
@@ -1895,9 +1938,17 @@ app.get('/api/duels/leaderboard', async (req,res) => {
         placement_games_required:DUEL_PLACEMENT_GAMES,games_remaining:Math.max(0,DUEL_PLACEMENT_GAMES-games)
       });
     }
-    res.json({kit:kitRaw,placement_games_required:DUEL_PLACEMENT_GAMES,entries:rows.map((r)=>(
-      {position:Number(r.placement||0),uuid:r.minecraft_uuid,username:r.minecraft_username,elo:Number(r.elo),tier:duelTier(r.elo),ranked:true,games:Number(r.games||0),wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.identity_key)||[]}
-    ))});
+    res.json({kit:kitRaw,placement_games_required:DUEL_PLACEMENT_GAMES,entries:rows.map((r)=>{
+      const games=Number(r.games||0);
+      const ranked=games>=DUEL_PLACEMENT_GAMES;
+      return {
+        position:ranked?Number(r.placement||0):0,uuid:r.minecraft_uuid,username:r.minecraft_username,
+        elo:ranked?Number(r.elo):null,tier:ranked?duelTier(r.elo):'Unranked',ranked,games,
+        placement_games_required:DUEL_PLACEMENT_GAMES,games_remaining:Math.max(0,DUEL_PLACEMENT_GAMES-games),
+        wins:Number(r.wins),losses:Number(r.losses),kills:Number(r.kills),deaths:Number(r.deaths),
+        kdr:duelKdr(r.kills,r.deaths),kits:byPlayer.get(r.identity_key)||[]
+      };
+    })});
   } catch(error){ console.error('[duels leaderboard]',error); res.status(500).json({error:'Impossible de charger le leaderboard.'}); }
 });
 

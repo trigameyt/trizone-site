@@ -16,16 +16,24 @@ function renderBadges(kits) {
   }).join('');
 }
 function row(entry) {
-  const podiumMaterial = entry.position === 1 ? 'GOLD_INGOT' : entry.position === 2 ? 'IRON_INGOT' : entry.position === 3 ? 'COPPER_INGOT' : null;
-  const medal = podiumMaterial ? `${Trizone.minecraftIconHtml(podiumMaterial, '', 'mc-icon-place')}<small>${entry.position}</small>` : `<b>${entry.position}.</b>`;
-  const placeClass = entry.position <= 3 ? `place-${entry.position}` : '';
+  const ranked = entry.ranked === true;
+  const position = ranked ? Number(entry.position || 0) : 0;
+  const podiumMaterial = position === 1 ? 'GOLD_INGOT' : position === 2 ? 'IRON_INGOT' : position === 3 ? 'COPPER_INGOT' : null;
+  const medal = ranked
+    ? (podiumMaterial ? `${Trizone.minecraftIconHtml(podiumMaterial, '', 'mc-icon-place')}<small>${position}</small>` : `<b>${position || '—'}.</b>`)
+    : '<b>U</b>';
+  const placeClass = ranked && position <= 3 ? `place-${position}` : '';
   const initials = String(entry.username || '?').slice(0, 2).toUpperCase();
-  return `<article class="leaderboard-row ${placeClass} rank-${tierClass(entry.tier)}" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}">
+  const required = Number(entry.placement_games_required || 10);
+  const games = Number(entry.games || 0);
+  const rankLabel = ranked ? Trizone.escapeHtml(entry.tier) : 'UNRANKED';
+  const eloLabel = ranked ? `${Number(entry.elo)} ELO` : `${games}/${required} placements`;
+  return `<article class="leaderboard-row ${placeClass} rank-${tierClass(ranked ? entry.tier : 'Unranked')}" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}">
     <div class="lb-position">${medal}</div>
     <div class="lb-avatar ${avatarClass(entry.username)}"><span>${Trizone.escapeHtml(initials)}</span></div>
     <div class="lb-player">
       <strong>${Trizone.escapeHtml(entry.username)}</strong>
-      <span><em class="${tierClass(entry.tier)}">${Trizone.escapeHtml(entry.tier)}</em><b class="lb-elo-chip ${tierClass(entry.tier)}">${entry.elo} ELO</b><span class="lb-record">${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></span>
+      <span><em class="${tierClass(ranked ? entry.tier : 'Unranked')}">${rankLabel}</em><b class="lb-elo-chip ${tierClass(ranked ? entry.tier : 'Unranked')}">${eloLabel}</b><span class="lb-record">${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></span>
     </div>
     <div class="lb-badges">${renderBadges(entry.kits)}</div>
   </article>`;
@@ -33,7 +41,7 @@ function row(entry) {
 function applySearch() {
   const q = String(document.getElementById('leaderboard-search')?.value || '').trim().toLowerCase();
   const filtered = q ? leaderboardEntries.filter((e) => String(e.username).toLowerCase().includes(q)) : leaderboardEntries;
-  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : `<div class="empty-state lb-empty"><div class="lb-empty-icon">${Trizone.minecraftIconHtml('NETHER_STAR', '', 'mc-icon-empty')}</div><h2>Aucun joueur Ranked</h2><p>Il faut terminer 10 matchs de placement pour apparaître ici.</p></div>`;
+  document.getElementById('leaderboard-root').innerHTML = filtered.length ? filtered.map(row).join('') : `<div class="empty-state lb-empty"><div class="lb-empty-icon">${Trizone.minecraftIconHtml('NETHER_STAR', '', 'mc-icon-empty')}</div><h2>Aucun joueur</h2><p>Les joueurs apparaîtront ici dès que leurs données Duels seront synchronisées.</p></div>`;
   Trizone.bindMinecraftIcons(document.getElementById('leaderboard-root'));
 }
 async function loadLeaderboard(kit) {
@@ -44,7 +52,7 @@ async function loadLeaderboard(kit) {
   const title = document.getElementById('leaderboard-title');
   title.innerHTML = `${Trizone.minecraftIconHtml(info.icon || 'BARRIER', '', 'mc-icon-title')} ${Trizone.escapeHtml(info.name)}`;
   Trizone.bindMinecraftIcons(title);
-  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement Ranked · 10 matchs de placement requis' : `Classement ${info.name} · ELO visible après 10 matchs`;
+  document.getElementById('leaderboard-subtitle').textContent = kit === 'overall' ? 'Classement Duels · joueurs en placement affichés UNRANKED' : `Classement ${info.name} · UNRANKED avant 10 matchs`;
   try {
     const data = await Trizone.json(`/api/duels/leaderboard?kit=${encodeURIComponent(kit)}&limit=100`);
     leaderboardEntries = data.entries || [];

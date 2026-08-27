@@ -114,17 +114,12 @@ const pool = {
 };
 
 function splitSqlStatements(source) {
-  // Supprime les commentaires SQL sur ligne entière avant de parser les quotes.
-  // Sinon une apostrophe dans un commentaire (ex: d'éviter) peut être prise
-  // pour le début d'une chaîne et empêcher de séparer les requêtes suivantes.
-  const input = String(source).replace(/^\s*--.*$/gm, '');
-
   const statements = [];
   let current = '';
   let quote = null;
   let escaped = false;
-  for (let i = 0; i < input.length; i += 1) {
-    const ch = input[i];
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
     if (escaped) { current += ch; escaped = false; continue; }
     if (quote && ch === '\\') { current += ch; escaped = true; continue; }
     if (quote) {
@@ -151,7 +146,8 @@ async function initDatabase() {
   const schemaPath = path.join(__dirname, '..', 'database', 'schema.mysql.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8');
   for (const statement of splitSqlStatements(schema)) {
-    if (statement) await rawPool.query(statement);
+    const cleaned = statement.replace(/^\s*--.*$/gm, '').trim();
+    if (cleaned) await rawPool.query(cleaned);
   }
   console.log('[database] MySQL/MariaDB connecté et schéma vérifié.');
 }
