@@ -964,8 +964,11 @@ body.modal-open { overflow:hidden; }
 }
 .mc-player-head img{
   display:block;
-  width:100%;
-  height:100%;
+  width:100%!important;
+  height:100%!important;
+  max-width:100%!important;
+  max-height:100%!important;
+  aspect-ratio:1/1;
   object-fit:cover;
   image-rendering:pixelated;
   image-rendering:crisp-edges;
@@ -989,7 +992,15 @@ body.modal-open { overflow:hidden; }
   background:linear-gradient(180deg,rgba(92,31,137,.72),rgba(28,11,43,.96));
 }
 .duel-profile-player-head{width:58px;height:58px;min-width:58px;border-radius:13px}
-.mc-account-head{width:64px;height:64px;min-width:64px;border-radius:14px}
+.mc-account-head{
+  width:64px!important;
+  height:64px!important;
+  min-width:64px!important;
+  max-width:64px!important;
+  flex:0 0 64px!important;
+  aspect-ratio:1/1;
+  border-radius:14px;
+}
 .duel-account-head{width:56px;height:56px;min-width:56px;border-radius:13px}
 .minecraft-account-identity{
   display:flex;
@@ -1008,7 +1019,7 @@ body.modal-open { overflow:hidden; }
   align-items:center;
   gap:6px 9px;
 }
-.minecraft-account-identity span{
+.minecraft-account-identity>div>span{
   width:100%;
   color:var(--muted);
   font-size:.76rem;
