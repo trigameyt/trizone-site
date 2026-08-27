@@ -1557,12 +1557,23 @@ async function reconcileDuelKitsWithLobbyFile(db = null) {
   const run = db ? db.query.bind(db) : query;
   const keys = await getLobbyCanonicalKitKeys(db);
   if (!keys || !keys.length) return { applied: false, keys: [] };
+
+  // MariaDB-safe: évite d'affecter directement le résultat d'un IN() à BOOLEAN
+  // et évite de réutiliser les mêmes placeholders dans une seule requête.
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(',');
   await run(
     `UPDATE duel_kits
-     SET updated_at = CASE WHEN active <> (kit_key IN (${placeholders})) THEN NOW() ELSE updated_at END,
-         active = (kit_key IN (${placeholders}))`,
-    [...keys, ...keys]
+     SET updated_at = CASE WHEN active=TRUE THEN NOW() ELSE updated_at END,
+         active = FALSE
+     WHERE active=TRUE AND kit_key NOT IN (${placeholders})`,
+    keys
+  );
+  await run(
+    `UPDATE duel_kits
+     SET updated_at = CASE WHEN active=FALSE THEN NOW() ELSE updated_at END,
+         active = TRUE
+     WHERE active=FALSE AND kit_key IN (${placeholders})`,
+    keys
   );
   return { applied: true, keys };
 }
@@ -1843,10 +1854,24 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
 
 app.get('/api/duels/kits', async (_req,res) => {
   try {
-    // Reconciliation aussi a la lecture : apres un redeploiement, un ancien kit fantome
-    // disparait immediatement si le kits.yml stocke du Lobby ne le contient plus.
-    await reconcileDuelKitsWithLobbyFile();
-    const r=await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
+    // La reconciliation ne doit jamais casser tout le leaderboard.
+    // Si le snapshot kits.yml pose problème, on sert quand même les kits déjà en base.
+    try {
+      await reconcileDuelKitsWithLobbyFile();
+    } catch (reconcileError) {
+      console.warn('[duels kits reconcile]', reconcileError?.message || reconcileError);
+    }
+
+    let r;
+    try {
+      r = await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
+    } catch (error) {
+      // Compatibilité avec une ancienne table duel_kits qui n'aurait pas encore la colonne emoji.
+      if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
+      console.warn('[duels kits] colonne legacy détectée, fallback sans emoji.');
+      r = await query("SELECT kit_key AS `key`, display_name AS name, icon_material AS icon, '⚔' AS emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name");
+    }
+
     res.json({kits:r.rows, tiers:duelTierThresholds});
   }
   catch(error){ console.error('[duels kits]',error); res.status(500).json({error:'Impossible de charger les kits.'}); }
