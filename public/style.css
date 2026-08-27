@@ -946,3 +946,97 @@ body.modal-open { overflow:hidden; }
   .public-kit-summary .duel-mini-stats { width:100%; }
   .duel-progress-chart { min-height:170px; }
 }
+
+/* ===== v4.1.5 — Têtes Minecraft Java/Bedrock ===== */
+.mc-player-head{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:48px;
+  height:48px;
+  min-width:48px;
+  overflow:hidden;
+  border-radius:11px;
+  border:1px solid rgba(184,108,255,.42);
+  background:linear-gradient(180deg,rgba(92,31,137,.72),rgba(28,11,43,.96));
+  box-shadow:0 8px 22px rgba(0,0,0,.24), inset 0 0 18px rgba(159,66,255,.1);
+}
+.mc-player-head img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+}
+.mc-player-head-fallback{
+  display:none;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  height:100%;
+  font-size:.78rem;
+  font-weight:900;
+  letter-spacing:.04em;
+  color:#fff;
+}
+.mc-player-head.is-fallback img{display:none!important}
+.mc-player-head.is-fallback .mc-player-head-fallback{display:flex}
+.mc-player-head.is-bedrock{border-color:rgba(90,199,255,.42)}
+.lb-avatar.mc-player-head{
+  padding:0;
+  background:linear-gradient(180deg,rgba(92,31,137,.72),rgba(28,11,43,.96));
+}
+.duel-profile-player-head{width:58px;height:58px;min-width:58px;border-radius:13px}
+.mc-account-head{width:64px;height:64px;min-width:64px;border-radius:14px}
+.duel-account-head{width:56px;height:56px;min-width:56px;border-radius:13px}
+.minecraft-account-identity{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  margin:2px 0 18px;
+  padding:12px;
+  border:1px solid rgba(162,87,220,.22);
+  border-radius:14px;
+  background:rgba(21,10,30,.46);
+}
+.minecraft-account-identity>div{
+  min-width:0;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 9px;
+}
+.minecraft-account-identity span{
+  width:100%;
+  color:var(--muted);
+  font-size:.76rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.minecraft-account-identity strong{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:1.05rem;
+}
+.bedrock-pill{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:2px 7px;
+  border:1px solid rgba(90,199,255,.36);
+  border-radius:999px;
+  background:rgba(38,145,202,.12);
+  color:#8edcff;
+  font-size:.64rem;
+  font-weight:900;
+  letter-spacing:.06em;
+}
+.duel-rank-banner>.duel-account-head{align-self:center}
+@media (max-width:640px){
+  .mc-account-head{width:56px;height:56px;min-width:56px}
+  .duel-account-head{width:48px;height:48px;min-width:48px}
+}

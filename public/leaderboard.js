@@ -24,15 +24,16 @@ function row(entry) {
     ? (podiumMaterial ? `${Trizone.minecraftIconHtml(podiumMaterial, '', 'mc-icon-place')}<small>${position}</small>` : `<b>${position || '—'}.</b>`)
     : '<b>U</b>';
   const placeClass = ranked && position <= 3 ? `place-${position}` : '';
-  const initials = String(entry.username || '?').slice(0, 2).toUpperCase();
   const required = Number(entry.placement_games_required || 10);
   const games = Number(entry.games || 0);
   const rankLabel = ranked ? Trizone.escapeHtml(entry.tier) : 'UNRANKED';
   const eloLabel = ranked ? `${Number(entry.elo)} ELO` : `${games}/${required} placements`;
-  const player = Trizone.escapeHtml(entry.username);
-  return `<article class="leaderboard-row ${placeClass} rank-${tierClass(ranked ? entry.tier : 'Unranked')} is-clickable" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}" data-player-profile="${player}" tabindex="0" role="button" aria-label="Voir le profil Duels de ${player}">
+  const rawPlayer = String(entry.username || '');
+  const player = Trizone.escapeHtml(Trizone.minecraftDisplayName(rawPlayer));
+  const playerHead = Trizone.minecraftPlayerHeadHtml({ username: rawPlayer, uuid: entry.uuid }, 'lb-avatar');
+  return `<article class="leaderboard-row ${placeClass} rank-${tierClass(ranked ? entry.tier : 'Unranked')} is-clickable" data-name="${Trizone.escapeHtml(String(entry.username).toLowerCase())}" data-player-profile="${Trizone.escapeHtml(rawPlayer)}" tabindex="0" role="button" aria-label="Voir le profil Duels de ${player}">
     <div class="lb-position">${medal}</div>
-    <div class="lb-avatar ${avatarClass(entry.username)}"><span>${Trizone.escapeHtml(initials)}</span></div>
+    ${playerHead}
     <div class="lb-player">
       <strong>${player}</strong>
       <span><em class="${tierClass(ranked ? entry.tier : 'Unranked')}">${rankLabel}</em><b class="lb-elo-chip ${tierClass(ranked ? entry.tier : 'Unranked')}">${eloLabel}</b><span class="lb-record">${entry.wins}W / ${entry.losses}L · KDR ${entry.kdr}</span></span>
@@ -54,6 +55,7 @@ function applySearch() {
   const root=document.getElementById('leaderboard-root');
   root.innerHTML = filtered.length ? filtered.map(row).join('') : `<div class="empty-state lb-empty"><div class="lb-empty-icon">${Trizone.minecraftIconHtml('NETHER_STAR', '', 'mc-icon-empty')}</div><h2>Aucun joueur</h2><p>Les joueurs apparaîtront ici dès que leurs données Duels seront synchronisées.</p></div>`;
   Trizone.bindMinecraftIcons(root);
+  Trizone.bindMinecraftPlayerHeads(root);
   bindProfileRows();
 }
 async function loadLeaderboard(kit) {
@@ -106,10 +108,11 @@ async function openPlayerProfile(username) {
     const profile=await Trizone.json(`/api/duels/player?player=${encodeURIComponent(username)}`);
     openedProfile=profile;
     if (!profile?.kits?.length) { body.innerHTML='<p class="muted">Aucune statistique de kit pour ce joueur.</p>'; return; }
-    body.innerHTML=`<div class="duel-public-profile-head"><div class="lb-avatar ${avatarClass(profile.username)}"><span>${Trizone.escapeHtml(String(profile.username||'?').slice(0,2).toUpperCase())}</span></div><div><span>PROFIL DUELS</span><h2>${Trizone.escapeHtml(profile.username)}</h2><p>Choisis un kit pour voir ses statistiques et sa progression.</p></div></div>
+    body.innerHTML=`<div class="duel-public-profile-head">${Trizone.minecraftPlayerHeadHtml({ username: profile.username, uuid: profile.uuid }, 'lb-avatar duel-profile-player-head')}<div><span>PROFIL DUELS</span><h2>${Trizone.escapeHtml(Trizone.minecraftDisplayName(profile.username))}</h2><p>Choisis un kit pour voir ses statistiques et sa progression.</p></div></div>
       <div class="duel-profile-kit-tabs">${profile.kits.map((kit,index)=>`<button class="duel-profile-kit-tab ${index===0?'active':''}" type="button" data-public-kit="${Trizone.escapeHtml(kit.kit)}">${Trizone.minecraftIconHtml(kit.icon,kit.emoji||'⚔','mc-icon-tab')}<span>${Trizone.escapeHtml(kit.name||kit.kit)}</span><small>${kit.ranked ? `${kit.tier} · ${kit.elo}` : `UNRANKED ${kit.games}/${kit.placement_games_required||10}`}</small></button>`).join('')}</div>
       <div id="duel-profile-detail"></div>`;
     Trizone.bindMinecraftIcons(body);
+    Trizone.bindMinecraftPlayerHeads(body);
     body.querySelectorAll('[data-public-kit]').forEach((button)=>button.addEventListener('click',()=>renderPublicKit(profile,button.dataset.publicKit)));
     await renderPublicKit(profile,profile.kits[0].kit);
   } catch(error) { body.innerHTML=`<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }

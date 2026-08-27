@@ -321,7 +321,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://files.stripe.com', 'https://*.stripe.com', 'https://assets.mcasset.cloud'],
+      imgSrc: ["'self'", 'data:', 'https://cdn.discordapp.com', 'https://files.stripe.com', 'https://*.stripe.com', 'https://assets.mcasset.cloud', 'https://mc-heads.net', 'https://*.mc-heads.net'],
       styleSrc: ["'self'"],
       fontSrc: ["'self'", 'data:'],
       scriptSrc: ["'self'"],

@@ -145,6 +145,69 @@ const Trizone = (() => {
     });
   }
 
+
+  function rawMinecraftName(value) {
+    if (typeof value === 'string') return value.trim();
+    if (!value || typeof value !== 'object') return '';
+    return String(
+      value.minecraft_username ??
+      value.username ??
+      value.name ??
+      ''
+    ).trim();
+  }
+
+  function minecraftDisplayName(value) {
+    const raw = rawMinecraftName(value);
+    // Floodgate/Bedrock utilise "." comme préfixe réseau.
+    // On le garde dans toutes les données/API, on le retire uniquement à l'affichage.
+    return raw.startsWith('.') ? raw.slice(1) : raw;
+  }
+
+  function isBedrockMinecraftName(value) {
+    return rawMinecraftName(value).startsWith('.');
+  }
+
+  function normalizeMinecraftUuid(value) {
+    return String(value || '').trim().replace(/-/g, '');
+  }
+
+  function minecraftPlayerHeadHtml(player, extraClass = '') {
+    const rawName = rawMinecraftName(player);
+    const displayName = minecraftDisplayName(player) || '?';
+    const uuid = normalizeMinecraftUuid(
+      player && typeof player === 'object'
+        ? (player.minecraft_uuid ?? player.uuid ?? '')
+        : ''
+    );
+    const bedrock = isBedrockMinecraftName(player);
+    const safeClass = String(extraClass || '').replace(/[^a-zA-Z0-9 _-]/g, '').trim();
+    const initials = displayName.slice(0, 2).toUpperCase();
+    // Pour Bedrock on n'utilise jamais le pseudo sans le point comme identifiant de skin :
+    // ça pourrait afficher la tête d'un compte Java ayant le même pseudo.
+    // On tente d'abord l'UUID réseau ; si le service ne le connaît pas, fallback local.
+    const lookup = uuid || (!bedrock ? rawName : '');
+    const classes = `mc-player-head${safeClass ? ` ${safeClass}` : ''}${bedrock ? ' is-bedrock' : ''}`;
+
+    if (!lookup) {
+      return `<span class="${classes} is-fallback" title="${escapeHtml(displayName)}"><span class="mc-player-head-fallback">${escapeHtml(initials || '?')}</span></span>`;
+    }
+
+    const src = `https://mc-heads.net/avatar/${encodeURIComponent(lookup)}/64`;
+    return `<span class="${classes}" title="${escapeHtml(displayName)}"><img src="${src}" data-mc-player-head alt="Tête de ${escapeHtml(displayName)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"><span class="mc-player-head-fallback">${escapeHtml(initials || '?')}</span></span>`;
+  }
+
+  function bindMinecraftPlayerHeads(root = document) {
+    root.querySelectorAll('img[data-mc-player-head]:not([data-mc-player-head-bound])').forEach((img) => {
+      img.dataset.mcPlayerHeadBound = '1';
+      img.addEventListener('error', () => {
+        const wrapper = img.closest('.mc-player-head');
+        if (wrapper) wrapper.classList.add('is-fallback');
+        img.hidden = true;
+      });
+    });
+  }
+
   async function copyText(value) {
     if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
     const temp = document.createElement('textarea');
@@ -198,5 +261,5 @@ const Trizone = (() => {
     return { me, config };
   }
 
-  return { state, json, escapeHtml, stripHtml, rankClass, rankLabel, loadMe, loadSiteConfig, applySiteConfig, showToast, boot, minecraftIconHtml, bindMinecraftIcons, normalizeMinecraftMaterial };
+  return { state, json, escapeHtml, stripHtml, rankClass, rankLabel, loadMe, loadSiteConfig, applySiteConfig, showToast, boot, minecraftIconHtml, bindMinecraftIcons, normalizeMinecraftMaterial, rawMinecraftName, minecraftDisplayName, isBedrockMinecraftName, normalizeMinecraftUuid, minecraftPlayerHeadHtml, bindMinecraftPlayerHeads };
 })();

@@ -173,6 +173,7 @@ async function loadDuels() {
     const op = duelPlacement(o);
     root.innerHTML = `
       <div class="duel-rank-banner ${o.ranked ? 'is-ranked' : 'is-unranked'}">
+        ${Trizone.minecraftPlayerHeadHtml({ username: data.username, uuid: data.uuid }, 'duel-account-head')}
         <div class="duel-rank-mark">${o.ranked ? Trizone.escapeHtml(o.tier) : 'U'}</div>
         <div class="duel-rank-info">
           <span>${o.ranked ? 'RANKED' : 'MATCHS DE PLACEMENT'}</span>
@@ -191,6 +192,7 @@ async function loadDuels() {
       <div class="duel-kit-list">${data.kits.map((stat) => duelKitCard(stat, stat.kit === data.selected_kit)).join('')}</div>
       <div id="duel-history-root" class="duel-history-root"><div class="skeleton duel-chart-skeleton"></div></div>`;
     Trizone.bindMinecraftIcons(root);
+    Trizone.bindMinecraftPlayerHeads(root);
     const selectedStat=data.kits.find((stat)=>stat.kit===data.selected_kit)||data.kits[0];
     loadAccountDuelHistory(selectedStat?.kit, selectedStat);
     root.querySelectorAll('[data-select-duel-kit]').forEach((button) => button.addEventListener('click', async () => {
@@ -250,7 +252,7 @@ async function loadAccount() {
       <aside class="profile-panel"><img class="avatar" src="${Trizone.escapeHtml(avatar)}" alt="Avatar Discord"><h2>${Trizone.escapeHtml(name)}</h2><p>@${Trizone.escapeHtml(u.discord_username)}</p><div class="profile-badges">${me.admin ? '<span class="badge badge-admin">Admin</span>' : ''}${u.minecraft_username ? `<span class="badge ${rankClass}">${Trizone.escapeHtml(rank)}</span>` : '<span class="badge">Minecraft non lié</span>'}</div><div class="profile-actions"><a class="btn btn-quiet" href="/leaderboard.html">Leaderboard duels</a>${me.admin ? '<a class="btn btn-primary" href="/admin.html">Panel admin</a>' : ''}<button class="btn btn-quiet" type="button" data-logout>Déconnexion</button></div></aside>
       <div class="account-stack">
         <section class="panel"><div class="panel-head"><div><h3>Minecraft</h3><p>Le compte lié à ton profil Trizone.</p></div></div>
-          ${u.minecraft_username ? `<div class="details-grid"><div><span>Pseudo</span><strong>${Trizone.escapeHtml(u.minecraft_username)}</strong></div><div><span>Grade</span><strong class="rank-text ${rankClass}">${Trizone.escapeHtml(rank)}</strong></div><div><span>UUID</span><strong class="mono">${Trizone.escapeHtml(u.minecraft_uuid)}</strong></div><div><span>Dernière synchro</span><strong>${fmtDate(u.updated_at)}</strong></div></div><div class="inline-actions"><button class="btn btn-quiet" id="generate-code" type="button">Changer de compte lié</button></div><p class="hint">Utilise <code>/link sync</code> sur le Lobby pour synchroniser grade + inventaire + Ender Chest.</p>` : `<p class="muted">Aucun compte Minecraft n’est encore lié.</p><button class="btn btn-primary" id="generate-code" type="button">Générer un code de liaison</button>`}
+          ${u.minecraft_username ? `<div class="minecraft-account-identity">${Trizone.minecraftPlayerHeadHtml({ username: u.minecraft_username, uuid: u.minecraft_uuid }, 'mc-account-head')}<div><span>Compte Minecraft</span><strong>${Trizone.escapeHtml(Trizone.minecraftDisplayName(u.minecraft_username))}</strong>${Trizone.isBedrockMinecraftName(u.minecraft_username) ? '<small class="bedrock-pill">BEDROCK</small>' : ''}</div></div><div class="details-grid"><div><span>Pseudo</span><strong>${Trizone.escapeHtml(Trizone.minecraftDisplayName(u.minecraft_username))}</strong></div><div><span>Grade</span><strong class="rank-text ${rankClass}">${Trizone.escapeHtml(rank)}</strong></div><div><span>UUID</span><strong class="mono">${Trizone.escapeHtml(u.minecraft_uuid)}</strong></div><div><span>Dernière synchro</span><strong>${fmtDate(u.updated_at)}</strong></div></div><div class="inline-actions"><button class="btn btn-quiet" id="generate-code" type="button">Changer de compte lié</button></div><p class="hint">Utilise <code>/link sync</code> sur le Lobby pour synchroniser grade + inventaire + Ender Chest.</p>` : `<p class="muted">Aucun compte Minecraft n’est encore lié.</p><button class="btn btn-primary" id="generate-code" type="button">Générer un code de liaison</button>`}
           <div id="link-code-box"></div></section>
         <section class="panel duel-panel"><div class="panel-head"><div><h3>Statistiques de duel</h3><p>10 matchs de placement avant de révéler ton ELO. Classement séparé par kit, wins / loses et KDR.</p></div><a class="btn btn-quiet btn-small" href="/leaderboard.html">Leaderboard</a></div><div id="duel-stats-root"><p class="muted">Chargement…</p></div></section>
         <section class="panel inventory-panel"><div class="panel-head"><div><h3>Survie — inventaire & Ender Chest</h3><p>Uniquement l’inventaire du monde <b>world</b> sur le serveur Lobby.</p></div></div><div id="game-data-root"><p class="muted">Chargement…</p></div></section>
@@ -258,6 +260,7 @@ async function loadAccount() {
         <section class="panel"><div class="panel-head"><div><h3>Achats</h3><p>Historique des achats confirmés par les webhooks Stripe.</p></div><a class="btn btn-quiet btn-small" href="/shop.html">Boutique</a></div><div id="purchase-list"><p class="muted">Chargement…</p></div></section>
       </div>
     </div>`;
+  Trizone.bindMinecraftPlayerHeads(root);
   document.getElementById('generate-code')?.addEventListener('click', generateLinkCode);
   document.getElementById('sync-discord-rank')?.addEventListener('click', syncDiscordRank);
   document.getElementById('sync-minecraft-rank')?.addEventListener('click', syncMinecraftRank);
