@@ -1864,7 +1864,7 @@ app.get('/api/duels/kits', async (_req,res) => {
 
     let r;
     try {
-      r = await query('SELECT kit_key AS key, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
+      r = await query('SELECT kit_key AS `key`, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
     } catch (error) {
       // Compatibilité avec une ancienne table duel_kits qui n'aurait pas encore la colonne emoji.
       if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
@@ -2126,7 +2126,7 @@ app.get('/api/account/purchases', requireAuth, async (req, res) => {
 
 app.get('/api/admin/duels/kits/order', requireAdmin, async (_req, res) => {
   try {
-    const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
+    const result = await query(`SELECT kit_key AS \`key\`,display_name AS name,icon_material AS icon,emoji,sort_order
       FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`);
     res.json({ kits: result.rows });
   } catch (error) {
@@ -2138,7 +2138,7 @@ app.get('/api/admin/duels/kits/order', requireAdmin, async (_req, res) => {
 app.put('/api/admin/duels/kits/order', requireAdmin, sensitiveLimiter, async (req, res) => {
   try {
     const order = await applyDuelKitOrder(req.body?.order);
-    const result = await query(`SELECT kit_key AS key,display_name AS name,icon_material AS icon,emoji,sort_order
+    const result = await query(`SELECT kit_key AS \`key\`,display_name AS name,icon_material AS icon,emoji,sort_order
       FROM duel_kits WHERE active=TRUE ORDER BY sort_order,display_name`);
     res.json({ ok: true, order, kits: result.rows });
   } catch (error) {
