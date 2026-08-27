@@ -1022,6 +1022,43 @@ function duelKdr(kills, deaths) {
   return d <= 0 ? k : Math.round((k / d) * 100) / 100;
 }
 
+async function duelHistoryPayload(identity, kitRaw, limitRaw = 160) {
+  const kit = normalizeKitKey(kitRaw);
+  if (!kit) return null;
+  const resolved = await resolveDuelIdentity(identity);
+  if (!resolved?.identityKey) return null;
+  const identityKey = resolved.identityKey;
+  const historyKey = duelIdentityKeySql('h');
+  const limit = Math.min(240, Math.max(10, Number(limitRaw || 160)));
+  const [kitInfo, history] = await Promise.all([
+    query('SELECT kit_key,display_name,icon_material,emoji FROM duel_kits WHERE kit_key=$1 LIMIT 1', [kit]),
+    query(`SELECT h.elo,h.wins,h.losses,h.games,h.recorded_at
+           FROM duel_elo_history h
+           WHERE ${historyKey}=$1 AND h.kit_key=$2
+           ORDER BY h.recorded_at ASC,h.id ASC LIMIT $3`, [identityKey,kit,limit])
+  ]);
+  if (!kitInfo.rowCount) return null;
+  return {
+    kit,
+    name:kitInfo.rows[0].display_name,
+    icon:kitInfo.rows[0].icon_material,
+    emoji:kitInfo.rows[0].emoji,
+    placement_games_required:DUEL_PLACEMENT_GAMES,
+    points:history.rows.map((row) => {
+      const games=Number(row.games ?? (Number(row.wins||0)+Number(row.losses||0)));
+      const ranked=games>=DUEL_PLACEMENT_GAMES;
+      return {
+        elo:ranked?Number(row.elo):null,
+        ranked,
+        games,
+        wins:Number(row.wins||0),
+        losses:Number(row.losses||0),
+        recorded_at:row.recorded_at
+      };
+    })
+  };
+}
+
 async function duelPlayerPayload(identity) {
   const resolved = await resolveDuelIdentity(identity);
   if (!resolved?.identityKey) return null;
@@ -1597,8 +1634,13 @@ app.post('/api/minecraft/duels/player-clear', requireMinecraftSecret, sensitiveL
       : uuid
         ? await client.query('DELETE FROM duel_player_settings WHERE minecraft_uuid=$1', [uuid])
         : await client.query('DELETE FROM duel_player_settings WHERE LOWER(COALESCE(minecraft_username,\'\'))=LOWER($1)', [username]);
+    const history = uuid && username
+      ? await client.query('DELETE FROM duel_elo_history WHERE minecraft_uuid=$1 OR LOWER(minecraft_username)=LOWER($2)', [uuid, username])
+      : uuid
+        ? await client.query('DELETE FROM duel_elo_history WHERE minecraft_uuid=$1', [uuid])
+        : await client.query('DELETE FROM duel_elo_history WHERE LOWER(minecraft_username)=LOWER($1)', [username]);
     await client.query('COMMIT');
-    res.json({ ok: true, uuid: uuid || null, username: username || null, deleted_stats: stats.rowCount, deleted_settings: settings.rowCount });
+    res.json({ ok: true, uuid: uuid || null, username: username || null, deleted_stats: stats.rowCount, deleted_settings: settings.rowCount, deleted_history: history.rowCount });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[duels player clear]', error);
@@ -1666,9 +1708,20 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
         const statRows = Array.isArray(player?.kits) ? player.kits : [];
         for (const st of statRows.slice(0,250)) {
           const kit = normalizeKitKey(st?.kit); if (!kit) continue;
+          const elo=Number(st.elo||300), wins=Number(st.wins||0), losses=Number(st.losses||0);
+          const games=wins+losses;
           await client.query(`INSERT INTO duel_player_stats(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,kills,deaths,streak,best_streak,updated_at)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username), elo=VALUES(elo), wins=VALUES(wins), losses=VALUES(losses), kills=VALUES(kills), deaths=VALUES(deaths), streak=VALUES(streak), best_streak=VALUES(best_streak), updated_at=NOW()`,
-            [uuid,username,kit,Number(st.elo||300),Number(st.wins||0),Number(st.losses||0),Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
+            [uuid,username,kit,elo,wins,losses,Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
+
+          // Historique léger : un point uniquement quand ELO ou compteur de matchs change.
+          const lastHistory=await client.query(`SELECT elo,wins,losses,games FROM duel_elo_history
+            WHERE minecraft_uuid=$1 AND kit_key=$2 ORDER BY id DESC LIMIT 1`,[uuid,kit]);
+          const last=lastHistory.rows[0];
+          if(!last || Number(last.elo)!==elo || Number(last.wins)!==wins || Number(last.losses)!==losses || Number(last.games)!==games) {
+            await client.query(`INSERT INTO duel_elo_history(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,games,recorded_at)
+              VALUES($1,$2,$3,$4,$5,$6,$7,NOW())`,[uuid,username,kit,elo,wins,losses,games]);
+          }
         }
       }
     }
@@ -1882,6 +1935,16 @@ app.get('/api/duels/player', async (req,res) => {
   catch(error){ console.error('[duels player]',error); res.status(500).json({error:'Impossible de charger le profil duel.'}); }
 });
 
+app.get('/api/duels/player/history', async (req,res) => {
+  try {
+    const kit=normalizeKitKey(req.query.kit);
+    if(!kit) return res.status(400).json({error:'Kit invalide.'});
+    const data=await duelHistoryPayload(req.query.player,kit,req.query.limit);
+    if(!data) return res.status(404).json({error:'Historique introuvable.'});
+    res.json(data);
+  } catch(error){ console.error('[duels player history]',error); res.status(500).json({error:'Impossible de charger la progression du joueur.'}); }
+});
+
 app.get('/api/duels/leaderboard', async (req,res) => {
   const kitRaw=String(req.query.kit||'overall');
   const limit=Math.min(100,Math.max(10,Number(req.query.limit||50)));
@@ -1980,6 +2043,18 @@ app.get('/api/duels/leaderboard', async (req,res) => {
 app.get('/api/account/duels', requireAuth, async (req,res) => {
   try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.json({linked:false}); const data=await duelPlayerPayload(me.minecraft_uuid); res.json({linked:true, data}); }
   catch(error){ console.error('[account duels]',error); res.status(500).json({error:'Impossible de charger tes statistiques de duel.'}); }
+});
+
+app.get('/api/account/duels/history', requireAuth, async (req,res) => {
+  try {
+    const me=await getCurrentUser(req.session.discordId);
+    if(!me?.minecraft_uuid) return res.json({linked:false});
+    const kit=normalizeKitKey(req.query.kit);
+    if(!kit) return res.status(400).json({error:'Kit invalide.'});
+    const data=await duelHistoryPayload(me.minecraft_uuid,kit,req.query.limit);
+    if(!data) return res.status(404).json({error:'Historique introuvable.'});
+    res.json({linked:true,data});
+  } catch(error){ console.error('[account duel history]',error); res.status(500).json({error:'Impossible de charger ta progression.'}); }
 });
 
 app.post('/api/account/duels/settings', requireAuth, sensitiveLimiter, async (req,res) => {

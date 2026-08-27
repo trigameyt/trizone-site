@@ -1,6 +1,6 @@
 {
   "name": "trizone-site",
-  "version": "4.1.0-ranked",
+  "version": "4.1.4-duel-profiles",
   "private": true,
   "description": "Site officiel Trizone v4.1 - MySQL/MariaDB, Ranked après 10 matchs de placement.",
   "main": "server.js",

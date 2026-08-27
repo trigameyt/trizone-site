@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS duel_player_stats (
   INDEX idx_duel_stats_username (minecraft_username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS duel_elo_history (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  minecraft_uuid VARCHAR(64) NOT NULL,
+  minecraft_username VARCHAR(32) NOT NULL,
+  kit_key VARCHAR(64) NOT NULL,
+  elo INT NOT NULL DEFAULT 300,
+  wins INT NOT NULL DEFAULT 0,
+  losses INT NOT NULL DEFAULT 0,
+  games INT NOT NULL DEFAULT 0,
+  recorded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX idx_duel_history_player_kit (minecraft_uuid, kit_key, recorded_at),
+  INDEX idx_duel_history_username (minecraft_username, kit_key, recorded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS duel_player_settings (
   minecraft_uuid VARCHAR(64) PRIMARY KEY,
   minecraft_username VARCHAR(32) NULL,
@@ -130,6 +144,15 @@ CREATE TABLE IF NOT EXISTS duel_sync_files (
   source_server VARCHAR(80) NOT NULL DEFAULT 'Lobby',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Initialise un premier point pour les joueurs déjà présents avant l'ajout des graphes.
+INSERT INTO duel_elo_history(minecraft_uuid,minecraft_username,kit_key,elo,wins,losses,games,recorded_at)
+SELECT s.minecraft_uuid,s.minecraft_username,s.kit_key,s.elo,s.wins,s.losses,(s.wins+s.losses),COALESCE(s.updated_at,NOW())
+FROM duel_player_stats s
+WHERE NOT EXISTS (
+  SELECT 1 FROM duel_elo_history h
+  WHERE h.minecraft_uuid=s.minecraft_uuid AND h.kit_key=s.kit_key
+);
 
 CREATE TABLE IF NOT EXISTS minecraft_game_data (
   minecraft_uuid VARCHAR(64) PRIMARY KEY,

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Leaderboard Duels — Trizone</title><meta name="theme-color" content="#0b0710">
-  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=4132">
-  <script defer src="/components.js?v=4132"></script><script defer src="/common.js?v=4132"></script><script defer src="/leaderboard.js?v=4132"></script>
+  <link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/style.css?v=4140">
+  <script defer src="/components.js?v=4140"></script><script defer src="/common.js?v=4140"></script><script defer src="/duel-charts.js?v=4140"></script><script defer src="/leaderboard.js?v=4140"></script>
 </head>
 <body>
   <div id="site-header"></div>
@@ -17,4 +17,11 @@
     </div></section>
   </main>
   <div id="site-footer"></div>
+  <div id="duel-profile-modal" class="duel-profile-modal" hidden aria-hidden="true">
+    <div class="duel-profile-backdrop" data-close-profile="1"></div>
+    <section class="duel-profile-dialog" role="dialog" aria-modal="true" aria-label="Profil Duels du joueur">
+      <button id="duel-profile-close" class="duel-profile-close" type="button" aria-label="Fermer">×</button>
+      <div id="duel-profile-body"><div class="skeleton"></div></div>
+    </section>
+  </div>
 </body></html>

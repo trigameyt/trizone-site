@@ -890,3 +890,59 @@ td small { color: var(--muted); margin-top: 3px; }
 }
 
 .progress-step-0{width:0}.progress-step-1{width:10%}.progress-step-2{width:20%}.progress-step-3{width:30%}.progress-step-4{width:40%}.progress-step-5{width:50%}.progress-step-6{width:60%}.progress-step-7{width:70%}.progress-step-8{width:80%}.progress-step-9{width:90%}.progress-step-10{width:100%}
+
+
+/* ===== v4.1.4 : profils Duels + progression par kit ===== */
+.leaderboard-row.is-clickable { cursor:pointer; position:relative; padding-right:86px; }
+.leaderboard-row.is-clickable:focus-visible { outline:2px solid #b96aff; outline-offset:2px; }
+.lb-profile-hint { position:absolute; right:18px; top:50%; transform:translateY(-50%); color:#9f7eb0; font-size:.68rem; font-weight:850; letter-spacing:.04em; transition:.18s ease; }
+.leaderboard-row.is-clickable:hover .lb-profile-hint { color:#e5b5ff; transform:translate(3px,-50%); }
+body.modal-open { overflow:hidden; }
+.duel-profile-modal[hidden] { display:none; }
+.duel-profile-modal { position:fixed; inset:0; z-index:2500; display:grid; place-items:center; padding:24px; }
+.duel-profile-backdrop { position:absolute; inset:0; background:rgba(5,3,8,.82); backdrop-filter:blur(10px); }
+.duel-profile-dialog { position:relative; z-index:1; width:min(980px,96vw); max-height:min(850px,92vh); overflow:auto; border:1px solid #5a3370; border-radius:18px; background:radial-gradient(circle at 90% -20%,rgba(176,77,255,.16),transparent 36%),#0d0912; box-shadow:0 30px 100px rgba(0,0,0,.58),0 0 80px rgba(100,39,154,.12); padding:22px; }
+.duel-profile-close { position:absolute; top:14px; right:14px; z-index:3; width:36px; height:36px; border-radius:10px; border:1px solid #4a2d58; background:#130d18; color:#d9c5e4; font-size:1.35rem; cursor:pointer; }
+.duel-profile-close:hover { border-color:#8a51a8; color:#fff; }
+.duel-public-profile-head { display:flex; align-items:center; gap:14px; padding:4px 50px 18px 2px; border-bottom:1px solid #32203b; }
+.duel-public-profile-head .lb-avatar { width:54px; height:54px; flex:0 0 54px; }
+.duel-public-profile-head > div:last-child > span,.eyebrow-mini { color:#ad82c1; font-size:.63rem; font-weight:950; letter-spacing:.14em; text-transform:uppercase; }
+.duel-public-profile-head h2 { margin:2px 0 1px; font-size:1.45rem; }
+.duel-public-profile-head p { margin:0; color:#91839a; font-size:.78rem; }
+.duel-profile-kit-tabs { display:flex; gap:9px; overflow-x:auto; padding:15px 2px 13px; scrollbar-width:thin; }
+.duel-profile-kit-tab { min-width:145px; display:grid; grid-template-columns:34px minmax(0,1fr); grid-template-rows:auto auto; align-items:center; column-gap:8px; text-align:left; border:1px solid #35223e; border-radius:11px; padding:9px 10px; background:#100b14; color:#ddd0e4; cursor:pointer; }
+.duel-profile-kit-tab .mc-item-icon { grid-row:1/3; }
+.duel-profile-kit-tab span { font-weight:850; white-space:nowrap; }
+.duel-profile-kit-tab small { color:#8e789a; font-size:.63rem; white-space:nowrap; }
+.duel-profile-kit-tab:hover,.duel-profile-kit-tab.active { border-color:#8651a0; background:linear-gradient(145deg,rgba(118,47,170,.22),#100b14 65%); }
+.duel-profile-kit-tab.active { box-shadow:inset 0 -2px 0 #c65fff; }
+.public-kit-summary { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:13px 14px; border:1px solid #35223f; border-radius:12px; background:#100b14; margin-bottom:12px; }
+.public-kit-main { display:flex; align-items:center; gap:11px; }
+.public-kit-main h3 { margin:0; font-size:1rem; }
+.public-kit-main p { margin:3px 0 0; color:#9c8aa6; font-size:.73rem; }
+.duel-history-root { margin-top:14px; }
+.duel-history-panel { border:1px solid #452955; border-radius:14px; background:linear-gradient(180deg,rgba(102,42,145,.10),#0d0911 34%); overflow:hidden; }
+.duel-history-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:14px 15px 8px; }
+.duel-history-head h4 { margin:3px 0 0; display:flex; align-items:center; gap:8px; font-size:.95rem; }
+.duel-history-current { display:flex; align-items:baseline; gap:7px; padding:7px 9px; border:1px solid #3e274a; border-radius:9px; background:#0c0810; }
+.duel-history-current strong { font-size:.83rem; }
+.duel-history-current span { color:#aa8ab9; font-size:.67rem; font-weight:800; }
+.duel-chart-wrap { width:100%; overflow:hidden; padding:0 8px; }
+.duel-progress-chart { display:block; width:100%; height:auto; min-height:190px; }
+.duel-progress-chart .chart-grid { stroke:#35223e; stroke-width:1; stroke-dasharray:4 6; }
+.duel-progress-chart .chart-line { fill:none; stroke:url(#duelChartGradient); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 6px rgba(183,87,255,.34)); }
+.duel-progress-chart .chart-points circle { fill:#d992ff; stroke:#160b1d; stroke-width:2; cursor:help; }
+.duel-progress-chart .chart-axis-label { fill:#8d7b96; font-size:12px; font-weight:700; }
+.duel-progress-chart .chart-axis-bottom { fill:#74667b; font-size:11px; }
+.duel-history-foot { display:flex; gap:8px; flex-wrap:wrap; padding:9px 14px 13px; border-top:1px solid #2b1b33; }
+.duel-history-foot span { border:1px solid #35213f; border-radius:999px; background:#0c0810; color:#9e8aa8; padding:4px 8px; font-size:.65rem; }
+.duel-chart-skeleton { min-height:245px; border-radius:14px; }
+@media (max-width:720px) {
+  .leaderboard-row.is-clickable { padding-right:14px; }
+  .lb-profile-hint { display:none; }
+  .duel-profile-modal { padding:10px; }
+  .duel-profile-dialog { width:100%; max-height:95vh; border-radius:14px; padding:15px; }
+  .public-kit-summary,.duel-history-head { align-items:flex-start; flex-direction:column; }
+  .public-kit-summary .duel-mini-stats { width:100%; }
+  .duel-progress-chart { min-height:170px; }
+}

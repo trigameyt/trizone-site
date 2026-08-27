@@ -149,6 +149,18 @@ async function loadPurchases() {
   } catch (error) { root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
 }
 
+async function loadAccountDuelHistory(kit, stat) {
+  const root = document.getElementById('duel-history-root');
+  if (!root || !kit || !stat) return;
+  root.innerHTML = '<div class="skeleton duel-chart-skeleton"></div>';
+  try {
+    const response = await Trizone.json(`/api/account/duels/history?kit=${encodeURIComponent(kit)}`);
+    if (!response.linked) { root.innerHTML = '<p class="muted">Compte Minecraft non lié.</p>'; return; }
+    root.innerHTML = TrizoneDuelsUI.historyPanel(stat, response.data);
+    Trizone.bindMinecraftIcons(root);
+  } catch (error) { root.innerHTML = `<div class="notice bad">${Trizone.escapeHtml(error.message)}</div>`; }
+}
+
 async function loadDuels() {
   const root = document.getElementById('duel-stats-root');
   if (!root) return;
@@ -176,8 +188,11 @@ async function loadDuels() {
         <div><span>KDR</span><strong>${o.kdr}</strong></div>
       </div>
       <div class="duel-selected-preview">Affichage actuel : ${(() => { const s=data.kits.find(k=>k.kit===data.selected_kit)||data.kits[0]; const p=duelPlacement(s); return `<b class="duel-preview-value">| ${Trizone.minecraftIconHtml(s.icon, s.emoji || '⚔', 'mc-icon-inline')} ${s.ranked ? `${Trizone.escapeHtml(s.tier)} ${s.elo} ELO` : `UNRANKED ${p.games}/${p.required}`}</b>`; })()}</div>
-      <div class="duel-kit-list">${data.kits.map((stat) => duelKitCard(stat, stat.kit === data.selected_kit)).join('')}</div>`;
+      <div class="duel-kit-list">${data.kits.map((stat) => duelKitCard(stat, stat.kit === data.selected_kit)).join('')}</div>
+      <div id="duel-history-root" class="duel-history-root"><div class="skeleton duel-chart-skeleton"></div></div>`;
     Trizone.bindMinecraftIcons(root);
+    const selectedStat=data.kits.find((stat)=>stat.kit===data.selected_kit)||data.kits[0];
+    loadAccountDuelHistory(selectedStat?.kit, selectedStat);
     root.querySelectorAll('[data-select-duel-kit]').forEach((button) => button.addEventListener('click', async () => {
       button.disabled = true;
       try { await Trizone.json('/api/account/duels/settings', { method: 'POST', body: JSON.stringify({ kit: button.dataset.selectDuelKit }) }); await loadDuels(); }
