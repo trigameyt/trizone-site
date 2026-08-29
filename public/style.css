@@ -927,13 +927,42 @@ body.modal-open { overflow:hidden; }
 .duel-history-current { display:flex; align-items:baseline; gap:7px; padding:7px 9px; border:1px solid #3e274a; border-radius:9px; background:#0c0810; }
 .duel-history-current strong { font-size:.83rem; }
 .duel-history-current span { color:#aa8ab9; font-size:.67rem; font-weight:800; }
-.duel-chart-wrap { width:100%; overflow:hidden; padding:0 8px; }
-.duel-progress-chart { display:block; width:100%; height:auto; min-height:190px; }
-.duel-progress-chart .chart-grid { stroke:#35223e; stroke-width:1; stroke-dasharray:4 6; }
-.duel-progress-chart .chart-line { fill:none; stroke:url(#duelChartGradient); stroke-width:4; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 6px rgba(183,87,255,.34)); }
+.duel-chart-wrap { width:100%; overflow:hidden; padding:0 8px; position:relative; }
+.duel-progress-chart { display:block; width:100%; height:auto; min-height:190px; overflow:visible; }
+.duel-progress-chart .chart-grid {
+  stroke:#35223e;
+  stroke-width:1;
+  stroke-dasharray:2 6;
+  opacity:.92;
+  vector-effect:non-scaling-stroke;
+}
+.duel-progress-chart .chart-line {
+  fill:none;
+  stroke:url(#duelChartGradient);
+  stroke-width:3.5 !important;
+  vector-effect:non-scaling-stroke;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  shape-rendering:geometricPrecision;
+  paint-order:stroke;
+  filter:
+    drop-shadow(0 0 6px rgba(218,125,255,.58))
+    drop-shadow(0 0 16px rgba(183,87,255,.34))
+    drop-shadow(0 8px 24px rgba(140,70,214,.18));
+}
+.duel-progress-chart .chart-fill,
+.duel-progress-chart .chart-area,
+.duel-progress-chart [class*="chart-fill"],
+.duel-progress-chart [class*="chart-area"] {
+  fill:rgba(201,114,255,.10) !important;
+  opacity:1;
+}
 .duel-progress-chart .chart-points,
-.duel-progress-chart .chart-points circle,
-.duel-progress-chart circle { display:none !important; }
+.duel-progress-chart .chart-points *,
+.duel-progress-chart circle,
+.duel-progress-chart [class*="point"],
+.duel-progress-chart [class*="marker"],
+.duel-progress-chart [class*="dot"] { display:none !important; }
 .duel-progress-chart .chart-axis-label { fill:#8d7b96; font-size:12px; font-weight:700; }
 .duel-progress-chart .chart-axis-bottom { fill:#74667b; font-size:11px; }
 .duel-history-foot { display:flex; gap:8px; flex-wrap:wrap; padding:9px 14px 13px; border-top:1px solid #2b1b33; }
@@ -1042,3 +1071,6 @@ body.modal-open { overflow:hidden; }
   .mc-account-head{width:56px;height:56px;min-width:56px}
   .duel-account-head{width:48px;height:48px;min-width:48px}
 }
+
+
+/* v4.1.8 — chart glow + no markers + uniform stroke */
