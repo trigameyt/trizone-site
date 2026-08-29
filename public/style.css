@@ -936,33 +936,44 @@ body.modal-open { overflow:hidden; }
   opacity:.92;
   vector-effect:non-scaling-stroke;
 }
-.duel-progress-chart .chart-line {
+.duel-progress-chart .chart-line,
+.duel-progress-chart path.chart-line,
+.duel-progress-chart polyline.chart-line {
   fill:none;
   stroke:url(#duelChartGradient);
-  stroke-width:3.5 !important;
+  stroke-width:3.25 !important;
   vector-effect:non-scaling-stroke;
   stroke-linecap:round;
   stroke-linejoin:round;
+  stroke-miterlimit:1;
   shape-rendering:geometricPrecision;
-  paint-order:stroke;
+  paint-order:stroke fill markers;
   filter:
-    drop-shadow(0 0 6px rgba(218,125,255,.58))
-    drop-shadow(0 0 16px rgba(183,87,255,.34))
-    drop-shadow(0 8px 24px rgba(140,70,214,.18));
+    drop-shadow(0 1px 2px rgba(245,175,255,.30))
+    drop-shadow(0 6px 12px rgba(206,110,255,.36))
+    drop-shadow(0 12px 24px rgba(147,72,231,.24));
 }
 .duel-progress-chart .chart-fill,
 .duel-progress-chart .chart-area,
 .duel-progress-chart [class*="chart-fill"],
 .duel-progress-chart [class*="chart-area"] {
-  fill:rgba(201,114,255,.10) !important;
+  fill:rgba(201,114,255,.08) !important;
   opacity:1;
 }
+
+/* supprime les points, marqueurs et segments parasites */
 .duel-progress-chart .chart-points,
 .duel-progress-chart .chart-points *,
 .duel-progress-chart circle,
 .duel-progress-chart [class*="point"],
 .duel-progress-chart [class*="marker"],
-.duel-progress-chart [class*="dot"] { display:none !important; }
+.duel-progress-chart [class*="dot"],
+.duel-progress-chart line:not(.chart-grid),
+.duel-progress-chart polyline:not(.chart-line),
+.duel-progress-chart path:not(.chart-line):not([class*="grid"]):not([class*="axis"]) {
+  display:none !important;
+}
+
 .duel-progress-chart .chart-axis-label { fill:#8d7b96; font-size:12px; font-weight:700; }
 .duel-progress-chart .chart-axis-bottom { fill:#74667b; font-size:11px; }
 .duel-history-foot { display:flex; gap:8px; flex-wrap:wrap; padding:9px 14px 13px; border-top:1px solid #2b1b33; }
@@ -1073,4 +1084,4 @@ body.modal-open { overflow:hidden; }
 }
 
 
-/* v4.1.8 — chart glow + no markers + uniform stroke */
+/* v4.1.9 — downward glow + parasite junction cleanup */
