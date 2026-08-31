@@ -309,9 +309,29 @@
 }
 
 .tournament-round {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.tournament-round:not(:first-child) {
+  padding-left: 24px;
+}
+
+.tournament-round:not(:last-child) {
+  padding-right: 8px;
+}
+
+.tournament-round:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 76px;
+  bottom: 76px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(140,60,255,.08), rgba(140,60,255,.45) 18%, rgba(140,60,255,.45) 82%, rgba(140,60,255,.08));
+  pointer-events: none;
 }
 
 .tournament-round-title {
@@ -363,11 +383,26 @@
   content: "";
   position: absolute;
   top: 50%;
-  right: -23px;
-  width: 22px;
+  right: -20px;
+  width: 20px;
   height: 1px;
   background: linear-gradient(90deg, #493858, #8c3cff);
-  opacity: .7;
+  opacity: .9;
+}
+
+.tournament-round:not(:first-child) .tournament-match::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -14px;
+  width: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, #8c3cff, #493858);
+  opacity: .9;
+}
+
+.tournament-round:last-child .tournament-match::after {
+  display: none;
 }
 
 .tournament-match-head {
@@ -652,8 +687,21 @@
   }
 
   .tournament-match:not(.is-final)::after {
-    right: -19px;
-    width: 18px;
+    right: -16px;
+    width: 16px;
+  }
+
+  .tournament-round:not(:first-child) {
+    padding-left: 18px;
+  }
+
+  .tournament-round:not(:first-child)::before {
+    left: 8px;
+  }
+
+  .tournament-round:not(:first-child) .tournament-match::before {
+    left: -10px;
+    width: 10px;
   }
 }
 
@@ -688,4 +736,34 @@
 .tournament-match-foot > span:last-child,
 .featured-meta strong {
   white-space: nowrap;
+}
+
+
+.mc-player-head {
+  position: relative;
+  background: #140f19;
+}
+
+.mc-player-head img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.mc-player-head .mc-player-head-fallback {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, #2b1d36, #1a1320);
+  color: #f2ebf8;
+}
+
+.mc-player-head.is-fallback .mc-player-head-fallback {
+  opacity: 1;
+}
+
+.mc-player-head.is-fallback img {
+  display: none;
 }
