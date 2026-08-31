@@ -207,7 +207,7 @@ function ftShortLabel(firstTo) {
 function playerHtml(player) {
   if (!player?.username) {
     return `<div class="tournament-player is-empty">
-      <span class="mc-player-head is-fallback"><span class="mc-player-head-fallback">?</span></span>
+      <span class="tournament-player-avatar"><span class="mc-player-head is-fallback"><span class="mc-player-head-fallback">?</span></span></span>
       <span class="tournament-player-name muted">À déterminer</span>
       <span class="tournament-player-score">—</span>
     </div>`;
@@ -217,7 +217,7 @@ function playerHtml(player) {
   const score = Number.isFinite(Number(player.score)) ? Number(player.score) : '—';
 
   return `<div class="tournament-player ${winner ? 'is-winner' : ''}">
-    ${Trizone.minecraftPlayerHeadHtml(player)}
+    <span class="tournament-player-avatar">${Trizone.minecraftPlayerHeadHtml(player)}</span>
     <span class="tournament-player-name">${Trizone.escapeHtml(Trizone.minecraftDisplayName(player.username))}</span>
     <span class="tournament-player-score">${score}</span>
   </div>`;

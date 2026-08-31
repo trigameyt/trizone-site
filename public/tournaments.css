@@ -1032,3 +1032,64 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ===== Tournois v5 : tête Minecraft isolée du pseudo =====
+   style.css donne une taille minimale générale aux têtes joueurs.
+   Dans le bracket compact, on l'annule explicitement pour empêcher la tête
+   de déborder dans la colonne du pseudo. */
+.tournament-player-avatar {
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  max-width: 28px;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.tournament-player-avatar > .mc-player-head {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.tournament-player-avatar > .mc-player-head img,
+.tournament-player-avatar > .mc-player-head .mc-player-head-fallback {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+}
+
+.tournament-player-name {
+  position: relative;
+  z-index: 2;
+  display: block;
+  padding-left: 2px;
+}
+
+@media (max-width: 1100px) {
+  .tournament-player-avatar {
+    width: 24px;
+    height: 24px;
+    max-width: 24px;
+    border-radius: 5px;
+  }
+}
+
+@media (max-width: 760px) {
+  .tournament-player-avatar {
+    width: 20px;
+    height: 20px;
+    max-width: 20px;
+    border-radius: 4px;
+  }
+}
