@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Tournois PvP Trizone : tableau, matchs, kits et manches en direct depuis le serveur Minecraft.">
+  <title>Tournois PvP — Trizone</title>
+  <meta name="theme-color" content="#0b0710">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/style.css?v=4160">
+  <link rel="stylesheet" href="/tournaments.css?v=1">
+  <script defer src="/components.js?v=4152"></script>
+  <script defer src="/common.js?v=4151"></script>
+  <script defer src="/tournaments.js?v=1"></script>
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main class="tournament-page">
+    <section class="tournament-hero">
+      <div class="container tournament-hero-grid">
+        <div class="tournament-hero-copy">
+          <div class="tournament-breadcrumb"><a href="/tournaments.html">Tournois</a><span>›</span><span id="tournament-breadcrumb-name">Tournoi en cours</span></div>
+          <p class="eyebrow">Tournoi PvP</p>
+          <div class="tournament-title-line">
+            <h1 id="tournament-name">Chargement…</h1>
+            <span id="tournament-status" class="tournament-status">—</span>
+          </div>
+          <p id="tournament-description" class="tournament-description">Retrouve le tableau du tournoi, les joueurs qui s’affrontent, le kit utilisé et le nombre de manches de chaque match.</p>
+
+          <div class="tournament-quick-meta">
+            <div class="tournament-quick-card">
+              <span>Kit sélectionné</span>
+              <strong id="tournament-kit">—</strong>
+            </div>
+            <div class="tournament-quick-card">
+              <span>Format</span>
+              <strong id="tournament-format">—</strong>
+            </div>
+            <div class="tournament-quick-card">
+              <span>Manches</span>
+              <strong id="tournament-best-of">—</strong>
+            </div>
+          </div>
+        </div>
+
+        <aside class="tournament-summary" aria-label="Informations du tournoi">
+          <div class="tournament-summary-head">
+            <span>Informations du tournoi</span>
+            <span id="tournament-source" class="tournament-source" hidden>Aperçu</span>
+          </div>
+          <dl class="tournament-summary-list">
+            <div><dt>Phase actuelle</dt><dd id="tournament-phase">—</dd></div>
+            <div><dt>Joueurs</dt><dd id="tournament-players">—</dd></div>
+            <div><dt>Type</dt><dd id="tournament-type">Élimination directe</dd></div>
+            <div><dt>Début</dt><dd id="tournament-start">—</dd></div>
+          </dl>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section compact tournament-content">
+      <div class="container">
+        <div class="tournament-tabs" role="tablist" aria-label="Sections du tournoi">
+          <button class="tournament-tab active" type="button">Tableau</button>
+          <span class="tournament-tab-note">Le tableau est prêt pour la synchronisation Minecraft.</span>
+        </div>
+
+        <div class="tournament-layout">
+          <section class="tournament-bracket-panel" aria-labelledby="bracket-title">
+            <div class="tournament-panel-head">
+              <div>
+                <p class="eyebrow">Élimination directe</p>
+                <h2 id="bracket-title">Tableau du tournoi</h2>
+              </div>
+              <div id="tournament-progress" class="tournament-progress">—</div>
+            </div>
+
+            <div id="tournament-bracket-scroll" class="tournament-bracket-scroll">
+              <div id="tournament-bracket" class="tournament-bracket">
+                <div class="tournament-loading"><div class="skeleton"></div></div>
+              </div>
+            </div>
+          </section>
+
+          <aside class="tournament-side-stack">
+            <section class="tournament-side-card">
+              <div class="tournament-side-title"><span>Match en cours / prochain</span><span class="live-dot" id="live-dot"></span></div>
+              <div id="tournament-featured-match" class="tournament-featured-match">
+                <div class="skeleton"></div>
+              </div>
+            </section>
+
+            <section class="tournament-side-card">
+              <div class="tournament-side-title"><span>Légende</span></div>
+              <div class="tournament-legend">
+                <span><i class="legend-dot is-live"></i>En cours</span>
+                <span><i class="legend-dot is-done"></i>Terminé</span>
+                <span><i class="legend-dot is-waiting"></i>À venir</span>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+</body>
+</html>
