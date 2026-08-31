@@ -222,3 +222,22 @@ INSERT IGNORE INTO site_settings(`key`, `value`) VALUES
   ('legal_contact_email', ''),
   ('privacy_contact_email', ''),
   ('legal_extra_terms', '');
+
+
+-- ===== Trizone Tournament WebSync =====
+-- Snapshot complet utilisÃ© par la page /tournaments.html.
+-- Les tables duel_tournaments / duel_matches restent la vue normalisÃ©e.
+CREATE TABLE IF NOT EXISTS duel_tournament_web_snapshots (
+  tournament_id VARCHAR(96) PRIMARY KEY,
+  state VARCHAR(32) NOT NULL DEFAULT 'registration',
+  source_server VARCHAR(80) NOT NULL DEFAULT 'Lobby',
+  snapshot JSON NOT NULL,
+  first_seen_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  CONSTRAINT fk_tournament_web_snapshot
+    FOREIGN KEY (tournament_id)
+    REFERENCES duel_tournaments(tournament_id)
+    ON DELETE CASCADE,
+  INDEX idx_tournament_web_active (state, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

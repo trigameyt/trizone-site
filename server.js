@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 const crypto = require('crypto');
 const path = require('path');
@@ -8,6 +8,7 @@ const cookieSession = require('cookie-session');
 const WebSocket = require('ws');
 const { rateLimit } = require('express-rate-limit');
 const { pool, query, initDatabase } = require('./src/db');
+const { installTournamentWebSync } = require('./src/tournament-web-sync');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -18,19 +19,19 @@ const SITE_SETTINGS = {
   home_title: { max: 80, fallback: 'TRIZONE' },
   home_description: {
     max: 650,
-    fallback: 'Trizone est un réseau Minecraft Java & Bedrock centré sur la survie et le PvP : progression par grades, warzone, duels, événements et systèmes communautaires. Connecte ton Discord, lie ton compte Minecraft et retrouve ton profil ainsi que la boutique au même endroit.'
+    fallback: 'Trizone est un rÃ©seau Minecraft Java & Bedrock centrÃ© sur la survie et le PvP : progression par grades, warzone, duels, Ã©vÃ©nements et systÃ¨mes communautaires. Connecte ton Discord, lie ton compte Minecraft et retrouve ton profil ainsi que la boutique au mÃªme endroit.'
   },
   server_address: { max: 120, fallback: 'play.trizone.club' },
-  server_tagline: { max: 180, fallback: 'Survie • PvP • Duels • Événements • Java & Bedrock' },
+  server_tagline: { max: 180, fallback: 'Survie â€¢ PvP â€¢ Duels â€¢ Ã‰vÃ©nements â€¢ Java & Bedrock' },
   feature_1_title: { max: 80, fallback: 'Survie & progression' },
-  feature_1_text: { max: 350, fallback: 'Développe ton stuff, progresse dans les grades et profite des systèmes d’économie et de progression du serveur.' },
+  feature_1_text: { max: 350, fallback: 'DÃ©veloppe ton stuff, progresse dans les grades et profite des systÃ¨mes dâ€™Ã©conomie et de progression du serveur.' },
   feature_2_title: { max: 80, fallback: 'PvP & duels' },
-  feature_2_text: { max: 350, fallback: 'Warzone, entraînement PvP et duels pour se battre, tester ses kits et progresser face aux autres joueurs.' },
+  feature_2_text: { max: 350, fallback: 'Warzone, entraÃ®nement PvP et duels pour se battre, tester ses kits et progresser face aux autres joueurs.' },
   feature_3_title: { max: 80, fallback: 'Java & Bedrock' },
-  feature_3_text: { max: 350, fallback: 'Le réseau est accessible aux joueurs Java et Bedrock grâce à Geyser et Floodgate.' },
+  feature_3_text: { max: 350, fallback: 'Le rÃ©seau est accessible aux joueurs Java et Bedrock grÃ¢ce Ã  Geyser et Floodgate.' },
   discord_invite_url: { max: 300, fallback: '' },
-  status_title: { max: 80, fallback: 'État des serveurs Minecraft' },
-  status_description: { max: 220, fallback: 'Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.' },
+  status_title: { max: 80, fallback: 'Ã‰tat des serveurs Minecraft' },
+  status_description: { max: 220, fallback: 'DisponibilitÃ© du proxy et des serveurs Trizone sur les 60 derniÃ¨res minutes.' },
   legal_operator_name: { max: 160, fallback: '' },
   legal_contact_address: { max: 350, fallback: '' },
   legal_contact_email: { max: 180, fallback: '' },
@@ -41,7 +42,7 @@ const SITE_SETTINGS = {
 const calagopusCache = new Map();
 
 // 60 points x 60 secondes = 60 minutes.
-// L'historique est gardé en mémoire et repart à zéro après un redéploiement Render.
+// L'historique est gardÃ© en mÃ©moire et repart Ã  zÃ©ro aprÃ¨s un redÃ©ploiement Render.
 const STATUS_HISTORY_SIZE = 60;
 const STATUS_SAMPLE_INTERVAL_MS = 60_000;
 const statusHistory = new Map();
@@ -52,8 +53,8 @@ let latestStatusBoard = null;
 function pushStatusSample(id, state) {
   const safeState = ['up', 'warn', 'down'].includes(state) ? state : 'down';
   let history = statusHistory.get(id);
-  // Au premier échantillon on remplit la fenêtre avec l'état actuel afin d'éviter
-  // d'afficher artificiellement 1,67 % juste après un redéploiement.
+  // Au premier Ã©chantillon on remplit la fenÃªtre avec l'Ã©tat actuel afin d'Ã©viter
+  // d'afficher artificiellement 1,67 % juste aprÃ¨s un redÃ©ploiement.
   if (!history) history = Array(STATUS_HISTORY_SIZE - 1).fill(safeState);
   history.push(safeState);
   if (history.length > STATUS_HISTORY_SIZE) history = history.slice(-STATUS_HISTORY_SIZE);
@@ -93,7 +94,7 @@ function minecraftServerConfigs() {
       id: 'proxy',
       label: 'Proxy',
       serverId: String(process.env.CALAGOPUS_PROXY_ID || '').trim(),
-      description: 'Point d’entrée Velocity du réseau Trizone.',
+      description: 'Point dâ€™entrÃ©e Velocity du rÃ©seau Trizone.',
     },
     {
       id: 'warzone',
@@ -117,7 +118,7 @@ function minecraftServerConfigs() {
       id: 'auth',
       label: 'Auth',
       serverId: String(process.env.CALAGOPUS_AUTH_ID || '').trim(),
-      description: 'Serveur d’authentification.',
+      description: 'Serveur dâ€™authentification.',
     },
   ];
 }
@@ -146,7 +147,7 @@ function apiAttributes(payload) {
 async function calagopusRequest(pathname, { kind = 'status', method = 'GET', body, timeout = 7000 } = {}) {
   const cfg = calagopusConfig(kind);
   if (!cfg.panelUrl || !cfg.apiKey) {
-    const error = new Error(`Calagopus ${kind} non configuré dans Render.`);
+    const error = new Error(`Calagopus ${kind} non configurÃ© dans Render.`);
     error.code = 'CALAGOPUS_NOT_CONFIGURED';
     throw error;
   }
@@ -194,7 +195,7 @@ async function readCalagopusStatus(serverId, label = 'Serveur', { kind = 'status
 
   // Calagopus n'utilise pas exactement l'ancien format Pterodactyl.
   // /resources renvoie principalement un objet `resources` dont `state` fait
-  // partie des ressources elles-mêmes. On accepte aussi l'ancien format afin
+  // partie des ressources elles-mÃªmes. On accepte aussi l'ancien format afin
   // de rester compatible avec les installations/proxys qui le transforment.
   const attr = apiAttributes(resourceResult.value);
   const rawServerAttr = serverResult.status === 'fulfilled' ? apiAttributes(serverResult.value) : {};
@@ -247,7 +248,7 @@ async function readCalagopusStatus(serverId, label = 'Serveur', { kind = 'status
 }
 
 function stateFromCalagopus(status, options = {}) {
-  if (!status?.configured) return { state: 'warn', label: 'À configurer' };
+  if (!status?.configured) return { state: 'warn', label: 'Ã€ configurer' };
   if (!status?.available || status?.suspended) {
     return { state: 'down', label: status?.suspended ? 'Suspendu' : 'Hors ligne' };
   }
@@ -255,9 +256,9 @@ function stateFromCalagopus(status, options = {}) {
   if (current === 'running' || current === 'online') return { state: 'up', label: 'En ligne' };
   if (current === 'starting') {
     if (options.treatStartingAsOnline) return { state: 'up', label: 'En ligne' };
-    return { state: 'warn', label: 'Démarrage' };
+    return { state: 'warn', label: 'DÃ©marrage' };
   }
-  if (current === 'stopping') return { state: 'warn', label: 'Arrêt en cours' };
+  if (current === 'stopping') return { state: 'warn', label: 'ArrÃªt en cours' };
   if (current === 'installing' || current === 'restoring_backup') return { state: 'warn', label: 'Maintenance' };
   return { state: 'down', label: 'Hors ligne' };
 }
@@ -270,7 +271,7 @@ async function sampleCalagopusStatuses() {
 
     for (const server of minecraftServerConfigs()) {
       let state = 'warn';
-      let stateLabel = 'À configurer';
+      let stateLabel = 'Ã€ configurer';
       let meta = 'Ajoute son ID Calagopus dans Render';
 
       try {
@@ -358,7 +359,7 @@ app.use((_req, res, next) => {
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || '');
 if (Buffer.byteLength(SESSION_SECRET, 'utf8') < 32) {
-  console.error('[security] SESSION_SECRET manquant ou trop court (32 octets minimum). Arrêt du serveur.');
+  console.error('[security] SESSION_SECRET manquant ou trop court (32 octets minimum). ArrÃªt du serveur.');
   process.exit(1);
 }
 
@@ -399,9 +400,9 @@ function safeEqualHex(a, b) {
 
 const PAID_RANK_ORDER = ['default_plus', 'vip', 'vip_plus', 'hero', 'emperor'];
 
-// Compatibilité avec les deux générations de variables Render.
-// Anciennes clés : Copper / Iron / Gold / Diamond / Netherite.
-// Nouvelles clés : Default+ / VIP / VIP+ / Hero / Emperor (ou Imperator).
+// CompatibilitÃ© avec les deux gÃ©nÃ©rations de variables Render.
+// Anciennes clÃ©s : Copper / Iron / Gold / Diamond / Netherite.
+// Nouvelles clÃ©s : Default+ / VIP / VIP+ / Hero / Emperor (ou Imperator).
 const PAID_RANK_ENV_ALIASES = {
   default_plus: { price: ['STRIPE_PRICE_DEFAULT_PLUS_ID', 'STRIPE_PRICE_COPPER_ID'], role: ['DISCORD_ROLE_DEFAULT_PLUS_ID', 'DISCORD_ROLE_COPPER_ID'] },
   vip:          { price: ['STRIPE_PRICE_VIP_ID', 'STRIPE_PRICE_IRON_ID'], role: ['DISCORD_ROLE_VIP_ID', 'DISCORD_ROLE_IRON_ID'] },
@@ -440,15 +441,15 @@ function logShopEnvironmentStatus() {
   const configured = ranks.filter((rank) => rank.priceId);
   const secretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
   if (!configured.length) {
-    console.warn('[Stripe config] Aucun Price ID trouvé. Vérifie les variables STRIPE_PRICE_*_ID dans Render.');
+    console.warn('[Stripe config] Aucun Price ID trouvÃ©. VÃ©rifie les variables STRIPE_PRICE_*_ID dans Render.');
     return;
   }
-  console.log('[Stripe config] Price IDs détectés pour : ' + configured.map((rank) => `${rank.key} (${rank.priceEnvName})`).join(', '));
+  console.log('[Stripe config] Price IDs dÃ©tectÃ©s pour : ' + configured.map((rank) => `${rank.key} (${rank.priceEnvName})`).join(', '));
   if (process.env.NODE_ENV === 'production' && secretKey.startsWith('sk_test_')) {
-    console.warn('[Stripe config] ATTENTION : le site Render est en production mais STRIPE_SECRET_KEY utilise encore une clé de test.');
+    console.warn('[Stripe config] ATTENTION : le site Render est en production mais STRIPE_SECRET_KEY utilise encore une clÃ© de test.');
   }
   if (process.env.NODE_ENV === 'production' && secretKey.startsWith('sk_live_')) {
-    console.log('[Stripe config] Clé Stripe LIVE détectée.');
+    console.log('[Stripe config] ClÃ© Stripe LIVE dÃ©tectÃ©e.');
   }
 }
 
@@ -477,7 +478,7 @@ function validDiscordSnowflake(value) {
 async function discordRoleRequest(method, discordId, roleId) {
   const cfg = discordBotConfig();
   if (!cfg.token || !validDiscordSnowflake(cfg.guildId)) {
-    throw new Error('Trizone-bot non configuré dans Render (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID).');
+    throw new Error('Trizone-bot non configurÃ© dans Render (DISCORD_BOT_TOKEN / DISCORD_GUILD_ID).');
   }
   if (!validDiscordSnowflake(discordId) || !validDiscordSnowflake(roleId)) {
     throw new Error('Discord ID ou Role ID invalide.');
@@ -528,8 +529,8 @@ async function syncDiscordPaidRank(discordId) {
     return { synced: false, reason: 'target_role_not_configured', target: target.key };
   }
 
-  // Trizone-bot ne touche qu'aux cinq rôles de grades payants configurés ici.
-  // Les rôles staff / membre / autres restent intacts.
+  // Trizone-bot ne touche qu'aux cinq rÃ´les de grades payants configurÃ©s ici.
+  // Les rÃ´les staff / membre / autres restent intacts.
   for (const rank of ranks) {
     if (target && rank.key === target.key) continue;
     const removed = await discordRoleRequest('DELETE', discordId, rank.roleId);
@@ -554,7 +555,7 @@ function stripeConfig() {
 
 async function stripeApi(method, endpoint, form = null) {
   const { secretKey, apiVersion } = stripeConfig();
-  if (!secretKey || !secretKey.startsWith('sk_')) throw new Error('STRIPE_SECRET_KEY non configurée.');
+  if (!secretKey || !secretKey.startsWith('sk_')) throw new Error('STRIPE_SECRET_KEY non configurÃ©e.');
 
   const response = await fetch(`https://api.stripe.com/v1${endpoint}`, {
     method,
@@ -670,10 +671,10 @@ async function upsertStripeCheckout(session, eventId, active) {
 
   if (!rank) throw new Error(`Checkout Stripe ${session?.id || ''}: grade Trizone invalide.`);
   if (!validDiscordSnowflake(discordId)) throw new Error(`Checkout Stripe ${session?.id || ''}: Discord ID invalide.`);
-  if (priceId && paidRankByPriceId(priceId)?.key !== rank.key) throw new Error('Le Price ID Stripe ne correspond pas au grade signé dans la session.');
+  if (priceId && paidRankByPriceId(priceId)?.key !== rank.key) throw new Error('Le Price ID Stripe ne correspond pas au grade signÃ© dans la session.');
 
   const existingUser = await query('SELECT discord_id FROM users WHERE discord_id = $1', [discordId]);
-  if (!existingUser.rowCount) throw new Error('Le compte Discord du paiement n’existe plus sur Trizone.');
+  if (!existingUser.rowCount) throw new Error('Le compte Discord du paiement nâ€™existe plus sur Trizone.');
 
   const paymentIntentId = stripeObjectId(session?.payment_intent);
   const purchasedAt = Number.isFinite(Number(session?.created)) ? new Date(Number(session.created) * 1000) : new Date();
@@ -709,7 +710,7 @@ async function upsertStripeCheckout(session, eventId, active) {
 
   if (active) {
     const sync = await syncAllPaidRankTargets(discordId, `stripe:${session.id}`);
-    console.log(`[Stripe] grade ${rank.key} activé pour ${discordId}`, sync);
+    console.log(`[Stripe] grade ${rank.key} activÃ© pour ${discordId}`, sync);
   }
   return { discordId, rank: rank.key, active };
 }
@@ -771,10 +772,10 @@ async function handleStripeEvent(event) {
   return { handled: false, reason: 'event_not_used' };
 }
 
-// Stripe doit recevoir le body brut pour vérifier Stripe-Signature.
+// Stripe doit recevoir le body brut pour vÃ©rifier Stripe-Signature.
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
   const { webhookSecret } = stripeConfig();
-  if (!webhookSecret) return res.status(503).json({ error: 'STRIPE_WEBHOOK_SECRET non configuré.' });
+  if (!webhookSecret) return res.status(503).json({ error: 'STRIPE_WEBHOOK_SECRET non configurÃ©.' });
   if (!verifyStripeWebhook(req.body, req.get('Stripe-Signature'), webhookSecret)) {
     return res.status(400).json({ error: 'Signature Stripe invalide.' });
   }
@@ -824,6 +825,7 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false }));
+installTournamentWebSync({ app, query, pool });
 
 const BASE_ORIGIN = (() => {
   try { return new URL(BASE_URL).origin; } catch { return ''; }
@@ -837,8 +839,8 @@ function requestOrigin(req) {
   try { return new URL(referer).origin; } catch { return '__invalid__'; }
 }
 
-// Défense CSRF supplémentaire pour toutes les écritures déclenchées depuis le navigateur.
-// Les endpoints Minecraft utilisent leur secret partagé et n'ont pas d'Origin navigateur.
+// DÃ©fense CSRF supplÃ©mentaire pour toutes les Ã©critures dÃ©clenchÃ©es depuis le navigateur.
+// Les endpoints Minecraft utilisent leur secret partagÃ© et n'ont pas d'Origin navigateur.
 app.use((req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
   if (req.path.startsWith('/api/minecraft/')) return next();
@@ -846,15 +848,15 @@ app.use((req, res, next) => {
   const origin = requestOrigin(req);
   const fetchSite = String(req.get('Sec-Fetch-Site') || '').toLowerCase();
   if (origin && (!BASE_ORIGIN || origin !== BASE_ORIGIN)) {
-    return res.status(403).json({ error: 'Origine de requête refusée.' });
+    return res.status(403).json({ error: 'Origine de requÃªte refusÃ©e.' });
   }
   if (!origin && fetchSite && !['same-origin', 'none'].includes(fetchSite)) {
-    return res.status(403).json({ error: 'Requête cross-site refusée.' });
+    return res.status(403).json({ error: 'RequÃªte cross-site refusÃ©e.' });
   }
   next();
 });
 
-// Les réponses liées au compte et à l'administration ne doivent pas être mises en cache.
+// Les rÃ©ponses liÃ©es au compte et Ã  l'administration ne doivent pas Ãªtre mises en cache.
 app.use((req, res, next) => {
   if (req.path === '/api/me' || req.path.startsWith('/api/account/') || req.path.startsWith('/api/admin/')) {
     res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -873,7 +875,7 @@ function requireAuth(req, res, next) {
 }
 function requireAdmin(req, res, next) {
   if (!req.session?.discordId) return res.status(401).json({ error: 'Connexion requise.' });
-  if (!isAdminId(req.session.discordId)) return res.status(403).json({ error: 'Accès administrateur requis.' });
+  if (!isAdminId(req.session.discordId)) return res.status(403).json({ error: 'AccÃ¨s administrateur requis.' });
   next();
 }
 function requireMinecraftSecret(req, res, next) {
@@ -1166,8 +1168,8 @@ async function getCurrentUser(discordId) {
 async function getSiteConfig() {
   const result = await query('SELECT `key`, `value` FROM site_settings');
   const saved = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
-  if (saved.status_description === 'Disponibilité du proxy et des serveurs Trizone sur les 20 dernières minutes.') {
-    saved.status_description = 'Disponibilité du proxy et des serveurs Trizone sur les 60 dernières minutes.';
+  if (saved.status_description === 'DisponibilitÃ© du proxy et des serveurs Trizone sur les 20 derniÃ¨res minutes.') {
+    saved.status_description = 'DisponibilitÃ© du proxy et des serveurs Trizone sur les 60 derniÃ¨res minutes.';
   }
   return Object.fromEntries(Object.entries(SITE_SETTINGS).map(([key, rule]) => [key, saved[key] ?? rule.fallback]));
 }
@@ -1177,7 +1179,7 @@ function legalShopReadiness(config = {}) {
   const address = String(config.legal_contact_address || '').trim();
   const email = String(config.legal_contact_email || '').trim();
   const missing = [];
-  if (name.length < 3) missing.push('identité légale de l’exploitant');
+  if (name.length < 3) missing.push('identitÃ© lÃ©gale de lâ€™exploitant');
   if (address.length < 8) missing.push('adresse postale de contact');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) missing.push('e-mail de contact');
   return { ready: missing.length === 0, missing };
@@ -1207,14 +1209,14 @@ app.get('/api/status-board', async (_req, res) => {
     res.json(await getFreshStatusBoard());
   } catch (error) {
     console.warn('[status-board]', error.message);
-    res.status(503).json({ error: 'Impossible de récupérer le statut Calagopus.' });
+    res.status(503).json({ error: 'Impossible de rÃ©cupÃ©rer le statut Calagopus.' });
   }
 });
 
 app.get('/auth/discord', sensitiveLimiter, (req, res) => {
   const clientId = process.env.DISCORD_CLIENT_ID;
   const redirectUri = process.env.DISCORD_REDIRECT_URI || `${BASE_URL}/auth/discord/callback`;
-  if (!clientId) return res.status(503).send('Discord OAuth non configuré.');
+  if (!clientId) return res.status(503).send('Discord OAuth non configurÃ©.');
 
   const state = crypto.randomBytes(24).toString('hex');
   req.session.oauthState = state;
@@ -1232,7 +1234,7 @@ app.get('/auth/discord', sensitiveLimiter, (req, res) => {
 app.get('/auth/discord/callback', sensitiveLimiter, async (req, res) => {
   try {
     const { code, state } = req.query;
-    if (!code || !state || state !== req.session?.oauthState) return res.status(400).send('État OAuth Discord invalide.');
+    if (!code || !state || state !== req.session?.oauthState) return res.status(400).send('Ã‰tat OAuth Discord invalide.');
     delete req.session.oauthState;
 
     const redirectUri = process.env.DISCORD_REDIRECT_URI || `${BASE_URL}/auth/discord/callback`;
@@ -1258,7 +1260,7 @@ app.get('/auth/discord/callback', sensitiveLimiter, async (req, res) => {
     const userResponse = await fetch('https://discord.com/api/v10/users/@me', {
       headers: { Authorization: `Bearer ${token.access_token}` },
     });
-    if (!userResponse.ok) return res.status(502).send('Impossible de récupérer le profil Discord.');
+    if (!userResponse.ok) return res.status(502).send('Impossible de rÃ©cupÃ©rer le profil Discord.');
     const user = await userResponse.json();
 
     await query(
@@ -1273,8 +1275,8 @@ app.get('/auth/discord/callback', sensitiveLimiter, async (req, res) => {
     );
 
     req.session.discordId = user.id;
-    // Si le joueur avait acheté avant de rejoindre le Discord ou si un rôle avait
-    // raté sa livraison, une nouvelle connexion au site tente une resynchronisation.
+    // Si le joueur avait achetÃ© avant de rejoindre le Discord ou si un rÃ´le avait
+    // ratÃ© sa livraison, une nouvelle connexion au site tente une resynchronisation.
     syncDiscordPaidRank(user.id).catch((error) => console.warn('[Discord rank login sync]', error.message));
     res.redirect('/account.html');
   } catch (error) {
@@ -1330,7 +1332,7 @@ app.post('/api/account/link-code', requireAuth, sensitiveLimiter, async (req, re
     res.json({ code, expiresInSeconds: 600 });
   } catch (error) {
     console.error('[link-code]', error);
-    res.status(500).json({ error: 'Impossible de générer le code.' });
+    res.status(500).json({ error: 'Impossible de gÃ©nÃ©rer le code.' });
   }
 });
 
@@ -1342,16 +1344,16 @@ app.post('/api/minecraft/link/confirm', requireMinecraftSecret, sensitiveLimiter
     const rank = normalizeRank(req.body?.rank);
 
     if (!/^\d{6}$/.test(code) || !/^[0-9a-fA-F-]{32,36}$/.test(uuid) || !/^[A-Za-z0-9_.+*\-]{1,32}$/.test(username)) {
-      return res.status(400).json({ error: 'Données invalides.' });
+      return res.status(400).json({ error: 'DonnÃ©es invalides.' });
     }
 
     const found = await query('SELECT discord_id FROM link_codes WHERE code = $1 AND expires_at > NOW()', [code]);
-    if (!found.rowCount) return res.status(404).json({ error: 'Code invalide ou expiré.' });
+    if (!found.rowCount) return res.status(404).json({ error: 'Code invalide ou expirÃ©.' });
     const discordId = found.rows[0].discord_id;
 
     const existingUuid = await query('SELECT discord_id FROM minecraft_accounts WHERE minecraft_uuid = $1', [uuid]);
     if (existingUuid.rowCount && existingUuid.rows[0].discord_id !== discordId) {
-      return res.status(409).json({ error: 'Ce compte Minecraft est déjà lié à un autre compte.' });
+      return res.status(409).json({ error: 'Ce compte Minecraft est dÃ©jÃ  liÃ© Ã  un autre compte.' });
     }
 
     const client = await pool.connect();
@@ -1377,7 +1379,7 @@ app.post('/api/minecraft/link/confirm', requireMinecraftSecret, sensitiveLimiter
     }
 
     enqueueMinecraftRankSync(discordId, 'account_linked').catch((error) => console.warn('[Minecraft rank link sync]', error.message));
-    res.json({ ok: true, message: `Compte ${username} lié avec succès.`, rank });
+    res.json({ ok: true, message: `Compte ${username} liÃ© avec succÃ¨s.`, rank });
   } catch (error) {
     console.error('[minecraft link]', error);
     res.status(500).json({ error: 'Erreur lors de la liaison.' });
@@ -1390,13 +1392,13 @@ app.post('/api/minecraft/profile-sync', requireMinecraftSecret, sensitiveLimiter
     const username = String(req.body?.username || '').trim();
     const rank = normalizeRank(req.body?.rank);
     if (!/^[0-9a-fA-F-]{32,36}$/.test(uuid) || !/^[A-Za-z0-9_.+*\-]{1,32}$/.test(username)) {
-      return res.status(400).json({ error: 'Données invalides.' });
+      return res.status(400).json({ error: 'DonnÃ©es invalides.' });
     }
     const linked = await query(
       `SELECT discord_id FROM minecraft_accounts WHERE minecraft_uuid = $1 LIMIT 1`,
       [uuid]
     );
-    if (!linked.rowCount) return res.status(404).json({ error: 'Ce compte Minecraft n’est pas encore lié au site.' });
+    if (!linked.rowCount) return res.status(404).json({ error: 'Ce compte Minecraft nâ€™est pas encore liÃ© au site.' });
     await query(
       `UPDATE minecraft_accounts
        SET minecraft_username = $2, minecraft_rank = $3, updated_at = NOW()
@@ -1455,7 +1457,7 @@ app.post('/api/minecraft/deliveries/:id/ack', requireMinecraftSecret, async (req
         `UPDATE minecraft_deliveries
          SET last_error = $2, updated_at = NOW()
          WHERE id = $1 AND status = 'pending'`,
-        [id, errorMessage || 'Erreur inconnue côté serveur Minecraft']
+        [id, errorMessage || 'Erreur inconnue cÃ´tÃ© serveur Minecraft']
       );
       return res.json({ ok: true, retry: true });
     }
@@ -1506,7 +1508,7 @@ async function fetchStripeShopProducts() {
   if (shopCache.data && Date.now() < shopCache.expires) return shopCache.data;
 
   const ranks = paidRankConfig().filter((rank) => rank.priceId);
-  if (!ranks.length) throw new Error('Aucun STRIPE_PRICE_*_ID configuré.');
+  if (!ranks.length) throw new Error('Aucun STRIPE_PRICE_*_ID configurÃ©.');
 
   const products = [];
   for (const rank of ranks) {
@@ -1595,8 +1597,8 @@ async function reconcileDuelKitsWithLobbyFile(db = null) {
   const keys = await getLobbyCanonicalKitKeys(db);
   if (!keys || !keys.length) return { applied: false, keys: [] };
 
-  // MariaDB-safe: évite d'affecter directement le résultat d'un IN() à BOOLEAN
-  // et évite de réutiliser les mêmes placeholders dans une seule requête.
+  // MariaDB-safe: Ã©vite d'affecter directement le rÃ©sultat d'un IN() Ã  BOOLEAN
+  // et Ã©vite de rÃ©utiliser les mÃªmes placeholders dans une seule requÃªte.
   const placeholders = keys.map((_, i) => `$${i + 1}`).join(',');
   await run(
     `UPDATE duel_kits
@@ -1644,7 +1646,7 @@ app.post('/api/minecraft/duels/player-clear', requireMinecraftSecret, sensitiveL
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('[duels player clear]', error);
-    res.status(500).json({ error: 'Impossible de supprimer les données Duels du joueur.' });
+    res.status(500).json({ error: 'Impossible de supprimer les donnÃ©es Duels du joueur.' });
   } finally {
     client.release();
   }
@@ -1671,7 +1673,7 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
       incomingKitKeys.push(key);
       const name = String(row.name || key).slice(0, 80);
       const icon = String(row.icon || 'IRON_SWORD').replace(/[^A-Z0-9_]/g, '').slice(0, 64) || 'IRON_SWORD';
-      const emoji = String(row.emoji || '⚔').slice(0, 12);
+      const emoji = String(row.emoji || 'âš”').slice(0, 12);
       if (authoritative) {
         await client.query(`INSERT INTO duel_kits(kit_key,display_name,icon_material,emoji,sort_order,active,updated_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW())
           ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), emoji=VALUES(emoji), active=TRUE, updated_at=NOW()`,
@@ -1714,7 +1716,7 @@ app.post('/api/minecraft/duels/snapshot', requireMinecraftSecret, minecraftSyncL
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username), elo=VALUES(elo), wins=VALUES(wins), losses=VALUES(losses), kills=VALUES(kills), deaths=VALUES(deaths), streak=VALUES(streak), best_streak=VALUES(best_streak), updated_at=NOW()`,
             [uuid,username,kit,elo,wins,losses,Number(st.kills||0),Number(st.deaths||0),Number(st.streak||0),Number(st.best_streak||0)]);
 
-          // Historique léger : un point uniquement quand ELO ou compteur de matchs change.
+          // Historique lÃ©ger : un point uniquement quand ELO ou compteur de matchs change.
           const lastHistory=await client.query(`SELECT elo,wins,losses,games FROM duel_elo_history
             WHERE minecraft_uuid=$1 AND kit_key=$2 ORDER BY id DESC LIMIT 1`,[uuid,kit]);
           const last=lastHistory.rows[0];
@@ -1768,8 +1770,8 @@ async function applyDuelKitOrder(requestedOrder) {
 }
 
 
-// Icône visuelle choisie en jeu avec /kiticon <kit>.
-// Le Material est conservé sur le site et redistribué à tous les serveurs Paper via le snapshot réseau.
+// IcÃ´ne visuelle choisie en jeu avec /kiticon <kit>.
+// Le Material est conservÃ© sur le site et redistribuÃ© Ã  tous les serveurs Paper via le snapshot rÃ©seau.
 app.post('/api/minecraft/duels/kits/icon', requireMinecraftSecret, minecraftSyncLimiter, async (req, res) => {
   try {
     const kit = normalizeKitKey(req.body?.kit);
@@ -1781,7 +1783,7 @@ app.post('/api/minecraft/duels/kits/icon', requireMinecraftSecret, minecraftSync
     res.json({ ok: true, kit, icon });
   } catch (error) {
     console.error('[duels kit icon]', error);
-    res.status(500).json({ error: 'Impossible de modifier l\'icône du kit.' });
+    res.status(500).json({ error: 'Impossible de modifier l\'icÃ´ne du kit.' });
   }
 });
 
@@ -1841,7 +1843,7 @@ app.get('/api/minecraft/duels/network-snapshot.properties', requireMinecraftSecr
       const key = normalizeKitKey(kit.kit_key); if (!key) continue;
       lines.push(`kit.${key}.name=${propertiesEscape(kit.display_name)}`);
       lines.push(`kit.${key}.icon=${propertiesEscape(kit.icon_material || 'IRON_SWORD')}`);
-      lines.push(`kit.${key}.emoji=${propertiesEscape(kit.emoji || '⚔')}`);
+      lines.push(`kit.${key}.emoji=${propertiesEscape(kit.emoji || 'âš”')}`);
       lines.push(`kit.${key}.order=${Number(kit.sort_order || 0)}`);
     }
 
@@ -1902,13 +1904,13 @@ app.post('/api/minecraft/duels/settings', requireMinecraftSecret, minecraftSyncL
     const username = String(req.body?.username || '').slice(0,32) || null;
     await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=COALESCE(VALUES(minecraft_username),minecraft_username), selected_kit=VALUES(selected_kit), updated_at=NOW()`,[uuid,username,kit]);
     res.json({ok:true,kit});
-  } catch(error){ console.error('[duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder le kit affiché.'}); }
+  } catch(error){ console.error('[duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder le kit affichÃ©.'}); }
 });
 
 app.get('/api/duels/kits', async (_req,res) => {
   try {
     // La reconciliation ne doit jamais casser tout le leaderboard.
-    // Si le snapshot kits.yml pose problème, on sert quand même les kits déjà en base.
+    // Si le snapshot kits.yml pose problÃ¨me, on sert quand mÃªme les kits dÃ©jÃ  en base.
     try {
       await reconcileDuelKitsWithLobbyFile();
     } catch (reconcileError) {
@@ -1919,10 +1921,10 @@ app.get('/api/duels/kits', async (_req,res) => {
     try {
       r = await query('SELECT kit_key AS `key`, display_name AS name, icon_material AS icon, emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name');
     } catch (error) {
-      // Compatibilité avec une ancienne table duel_kits qui n'aurait pas encore la colonne emoji.
+      // CompatibilitÃ© avec une ancienne table duel_kits qui n'aurait pas encore la colonne emoji.
       if (error?.code !== 'ER_BAD_FIELD_ERROR') throw error;
-      console.warn('[duels kits] colonne legacy détectée, fallback sans emoji.');
-      r = await query("SELECT kit_key AS `key`, display_name AS name, icon_material AS icon, '⚔' AS emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name");
+      console.warn('[duels kits] colonne legacy dÃ©tectÃ©e, fallback sans emoji.');
+      r = await query("SELECT kit_key AS `key`, display_name AS name, icon_material AS icon, 'âš”' AS emoji, sort_order FROM duel_kits WHERE active=TRUE ORDER BY sort_order, display_name");
     }
 
     res.json({kits:r.rows, tiers:duelTierThresholds});
@@ -2058,11 +2060,11 @@ app.get('/api/account/duels/history', requireAuth, async (req,res) => {
 });
 
 app.post('/api/account/duels/settings', requireAuth, sensitiveLimiter, async (req,res) => {
-  try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.status(400).json({error:'Compte Minecraft non lié.'}); const kit=normalizeKitKey(req.body?.kit); if(!kit) return res.status(400).json({error:'Kit invalide.'});
+  try { const me=await getCurrentUser(req.session.discordId); if(!me?.minecraft_uuid) return res.status(400).json({error:'Compte Minecraft non liÃ©.'}); const kit=normalizeKitKey(req.body?.kit); if(!kit) return res.status(400).json({error:'Kit invalide.'});
     const exists=await query('SELECT 1 FROM duel_kits WHERE kit_key=$1 AND active=TRUE',[kit]); if(!exists.rowCount) return res.status(404).json({error:'Kit inconnu.'});
     await query(`INSERT INTO duel_player_settings(minecraft_uuid,minecraft_username,selected_kit,updated_at) VALUES($1,$2,$3,NOW()) ON DUPLICATE KEY UPDATE minecraft_username=VALUES(minecraft_username),selected_kit=VALUES(selected_kit),updated_at=NOW()`,[me.minecraft_uuid,me.minecraft_username,kit]);
     res.json({ok:true,kit});
-  } catch(error){ console.error('[account duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder ton kit affiché.'}); }
+  } catch(error){ console.error('[account duel settings]',error); res.status(500).json({error:'Impossible de sauvegarder ton kit affichÃ©.'}); }
 });
 
 // ---- Inventaire Survie / Ender Chest ----
@@ -2072,7 +2074,7 @@ app.post('/api/minecraft/game-sync', requireMinecraftSecret, minecraftSyncLimite
     if(!uuid) return res.status(400).json({error:'UUID invalide.'});
     const expectedWorld=String(process.env.MINECRAFT_SURVIVAL_WORLD||'world').trim().toLowerCase();
     const sourceWorld=String(req.body?.source_world||'').trim().toLowerCase();
-    if(sourceWorld!==expectedWorld) return res.status(409).json({error:`Seul l'inventaire du monde ${expectedWorld} peut être synchronisé.`});
+    if(sourceWorld!==expectedWorld) return res.status(409).json({error:`Seul l'inventaire du monde ${expectedWorld} peut Ãªtre synchronisÃ©.`});
     const username=String(req.body?.username||uuid).slice(0,32);
     const source=String(req.body?.source_server||'Lobby').slice(0,64);
     const inventory=Array.isArray(req.body?.inventory)?req.body.inventory.slice(0,60):[];
@@ -2100,7 +2102,7 @@ app.get('/api/shop/categories', async (_req, res) => {
     res.json(await fetchStripeShopProducts());
   } catch (error) {
     console.error('[Stripe products]', error.message);
-    res.status(503).json({ error: 'Boutique Stripe non configurée ou indisponible.' });
+    res.status(503).json({ error: 'Boutique Stripe non configurÃ©e ou indisponible.' });
   }
 });
 
@@ -2110,17 +2112,17 @@ app.post('/api/shop/checkout', requireAuth, sensitiveLimiter, async (req, res) =
     const legal = legalShopReadiness(legalConfig);
     if (!legal.ready) {
       return res.status(503).json({
-        error: `Boutique non ouverte : complète ${legal.missing.join(', ')} dans le panel admin avant d'accepter des paiements.`,
+        error: `Boutique non ouverte : complÃ¨te ${legal.missing.join(', ')} dans le panel admin avant d'accepter des paiements.`,
       });
     }
 
     const rankKey = String(req.body?.rank || '').trim().toLowerCase();
     const rank = paidRankByKey(rankKey);
-    if (!rank || !rank.priceId) return res.status(400).json({ error: 'Produit invalide ou non configuré.' });
+    if (!rank || !rank.priceId) return res.status(400).json({ error: 'Produit invalide ou non configurÃ©.' });
 
     const user = await getCurrentUser(req.session.discordId);
     if (!user?.minecraft_username || !user?.minecraft_uuid) {
-      return res.status(409).json({ error: 'Lie d’abord ton compte Minecraft depuis la page Compte.' });
+      return res.status(409).json({ error: 'Lie dâ€™abord ton compte Minecraft depuis la page Compte.' });
     }
 
     const form = new URLSearchParams();
@@ -2140,13 +2142,13 @@ app.post('/api/shop/checkout', requireAuth, sensitiveLimiter, async (req, res) =
     form.set('origin_context', 'web');
 
     const session = await stripeApi('POST', '/checkout/sessions', form);
-    if (!session?.url) throw new Error('Stripe n’a pas renvoyé de lien Checkout.');
+    if (!session?.url) throw new Error('Stripe nâ€™a pas renvoyÃ© de lien Checkout.');
     res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
     console.error('[Stripe checkout]', error);
     const message = error?.stripe?.code === 'resource_missing'
-      ? 'Price ID Stripe introuvable. Vérifie les variables STRIPE_PRICE_*_ID.'
-      : 'Erreur lors de la création du paiement Stripe.';
+      ? 'Price ID Stripe introuvable. VÃ©rifie les variables STRIPE_PRICE_*_ID.'
+      : 'Erreur lors de la crÃ©ation du paiement Stripe.';
     res.status(error?.status === 400 ? 400 : 502).json({ error: message });
   }
 });
@@ -2155,16 +2157,16 @@ app.post('/api/account/discord-rank/sync', requireAuth, sensitiveLimiter, async 
   try {
     const result = await syncDiscordPaidRank(req.session.discordId);
     if (result.reason === 'not_member') {
-      return res.status(409).json({ error: 'Rejoins d’abord le serveur Discord Trizone, puis réessaie.' });
+      return res.status(409).json({ error: 'Rejoins dâ€™abord le serveur Discord Trizone, puis rÃ©essaie.' });
     }
     if (result.reason === 'no_roles_configured') {
-      return res.status(503).json({ error: 'Les rôles de grades Discord ne sont pas encore configurés.' });
+      return res.status(503).json({ error: 'Les rÃ´les de grades Discord ne sont pas encore configurÃ©s.' });
     }
-    if (!result.synced) return res.status(400).json({ error: 'Impossible de synchroniser le rôle Discord.' });
+    if (!result.synced) return res.status(400).json({ error: 'Impossible de synchroniser le rÃ´le Discord.' });
     res.json({ ok: true, rank: result.rank });
   } catch (error) {
     console.error('[Discord rank manual sync]', error);
-    res.status(502).json({ error: 'Trizone-bot n’a pas pu modifier le rôle. Vérifie ses permissions et la hiérarchie des rôles.' });
+    res.status(502).json({ error: 'Trizone-bot nâ€™a pas pu modifier le rÃ´le. VÃ©rifie ses permissions et la hiÃ©rarchie des rÃ´les.' });
   }
 });
 
@@ -2172,11 +2174,11 @@ app.post('/api/account/discord-rank/sync', requireAuth, sensitiveLimiter, async 
 app.post('/api/account/minecraft-rank/sync', requireAuth, sensitiveLimiter, async (req, res) => {
   try {
     const result = await enqueueMinecraftRankSync(req.session.discordId, 'manual_account_sync');
-    if (!result.queued) return res.status(409).json({ error: 'Aucun compte Minecraft lié.' });
+    if (!result.queued) return res.status(409).json({ error: 'Aucun compte Minecraft liÃ©.' });
     res.json({ ok: true, rank: result.rank, deliveryId: result.id });
   } catch (error) {
     console.error('[Minecraft rank manual sync]', error);
-    res.status(500).json({ error: 'Impossible de préparer la synchronisation Minecraft.' });
+    res.status(500).json({ error: 'Impossible de prÃ©parer la synchronisation Minecraft.' });
   }
 });
 
@@ -2194,7 +2196,7 @@ app.get('/api/account/purchases', requireAuth, async (req, res) => {
     res.json({ data: result.rows });
   } catch (error) {
     console.error('[purchases]', error);
-    res.status(500).json({ error: 'Impossible de charger l’historique.' });
+    res.status(500).json({ error: 'Impossible de charger lâ€™historique.' });
   }
 });
 
@@ -2258,7 +2260,7 @@ app.put('/api/admin/users/:discordId', requireAdmin, sensitiveLimiter, async (re
     if (req.body?.minecraft_rank != null) {
       const rank = normalizeRank(req.body.minecraft_rank);
       const updated = await query('UPDATE minecraft_accounts SET minecraft_rank = $2, updated_at = NOW() WHERE discord_id = $1', [discordId, rank]);
-      if (!updated.rowCount) return res.status(409).json({ error: 'Ce joueur n’a pas encore lié son compte Minecraft.' });
+      if (!updated.rowCount) return res.status(409).json({ error: 'Ce joueur nâ€™a pas encore liÃ© son compte Minecraft.' });
     }
     res.json({ ok: true });
   } catch (error) {
@@ -2352,7 +2354,7 @@ app.get('/api/admin/servers/:id/console-stream', requireAdmin, async (req, res) 
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
-  consoleSseSend(res, 'state', { state: 'connecting', label: 'Connexion à Calagopus…' });
+  consoleSseSend(res, 'state', { state: 'connecting', label: 'Connexion Ã  Calagopusâ€¦' });
 
   let socket = null;
   let closed = false;
@@ -2375,12 +2377,12 @@ app.get('/api/admin/servers/:id/console-stream', requireAdmin, async (req, res) 
     const data = wsPayload?.data?.attributes || wsPayload?.data || wsPayload?.attributes || wsPayload || {};
     const token = String(data.token || '');
     const socketUrl = String(data.socket || data.url || '');
-    if (!token || !/^wss?:\/\//i.test(socketUrl)) throw new Error('Calagopus n’a pas renvoyé de WebSocket valide.');
+    if (!token || !/^wss?:\/\//i.test(socketUrl)) throw new Error('Calagopus nâ€™a pas renvoyÃ© de WebSocket valide.');
 
     socket = new WebSocket(socketUrl, { handshakeTimeout: 7000 });
     socket.on('open', () => {
       socket.send(JSON.stringify({ event: 'auth', args: [token] }));
-      consoleSseSend(res, 'state', { state: 'connected', label: `Console ${server.label} connectée` });
+      consoleSseSend(res, 'state', { state: 'connected', label: `Console ${server.label} connectÃ©e` });
     });
     socket.on('message', (raw) => {
       let message;
@@ -2397,7 +2399,7 @@ app.get('/api/admin/servers/:id/console-stream', requireAdmin, async (req, res) 
           consoleSseSend(res, 'stats', stats || {});
         } catch {}
       } else if (event === 'token expiring' || event === 'token expired') {
-        consoleSseSend(res, 'state', { state: 'reconnecting', label: 'Renouvellement de la console…' });
+        consoleSseSend(res, 'state', { state: 'reconnecting', label: 'Renouvellement de la consoleâ€¦' });
       }
     });
     socket.on('error', (error) => {
@@ -2405,7 +2407,7 @@ app.get('/api/admin/servers/:id/console-stream', requireAdmin, async (req, res) 
     });
     socket.on('close', () => {
       if (!closed) {
-        consoleSseSend(res, 'state', { state: 'closed', label: 'Console déconnectée' });
+        consoleSseSend(res, 'state', { state: 'closed', label: 'Console dÃ©connectÃ©e' });
         res.end();
       }
       cleanup();
@@ -2432,7 +2434,7 @@ app.get('/api/admin/events', requireAdmin, async (_req, res) => {
 app.put('/api/admin/site-config', requireAdmin, sensitiveLimiter, async (req, res) => {
   try {
     const values = req.body?.values;
-    if (!values || typeof values !== 'object' || Array.isArray(values)) return res.status(400).json({ error: 'Données invalides.' });
+    if (!values || typeof values !== 'object' || Array.isArray(values)) return res.status(400).json({ error: 'DonnÃ©es invalides.' });
 
     const entries = [];
     for (const [key, raw] of Object.entries(values)) {
@@ -2470,11 +2472,11 @@ app.put('/api/admin/site-config', requireAdmin, sensitiveLimiter, async (req, re
     res.json({ ok: true, values: await getSiteConfig() });
   } catch (error) {
     console.error('[admin site config]', error);
-    res.status(500).json({ error: error.message || 'Impossible d’enregistrer le site.' });
+    res.status(500).json({ error: error.message || 'Impossible dâ€™enregistrer le site.' });
   }
 });
 
-// Compatibilité avec l’ancienne version du panel.
+// CompatibilitÃ© avec lâ€™ancienne version du panel.
 app.put('/api/admin/announcement', requireAdmin, sensitiveLimiter, async (req, res) => {
   const value = String(req.body?.value || '').trim().slice(0, SITE_SETTINGS.announcement.max);
   await query(
@@ -2486,8 +2488,8 @@ app.put('/api/admin/announcement', requireAdmin, sensitiveLimiter, async (req, r
   res.json({ ok: true, value });
 });
 
-// Défense en profondeur : même si un fichier sensible est copié par erreur dans public/,
-// il ne doit jamais être servi par le site.
+// DÃ©fense en profondeur : mÃªme si un fichier sensible est copiÃ© par erreur dans public/,
+// il ne doit jamais Ãªtre servi par le site.
 app.use((req, res, next) => {
   const p = String(req.path || '').toLowerCase();
   const blockedExact = new Set(['/server.js','/package.json','/package-lock.json','/render.yaml','/.env','/.env.example','/.gitignore']);
@@ -2507,12 +2509,13 @@ app.use((req, res) => {
 
 initDatabase()
   .then(() => app.listen(PORT, () => {
-    console.log(`Trizone site Calagopus lancé sur ${BASE_URL} (port ${PORT})`);
+    console.log(`Trizone site Calagopus lancÃ© sur ${BASE_URL} (port ${PORT})`);
     logShopEnvironmentStatus();
     sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message));
     setInterval(() => sampleCalagopusStatuses().catch((error) => console.warn('[status sampler]', error.message)), STATUS_SAMPLE_INTERVAL_MS).unref();
   }))
   .catch((error) => {
-    console.error('Impossible d’initialiser la base de données:', error);
+    console.error('Impossible dâ€™initialiser la base de donnÃ©es:', error);
     process.exit(1);
   });
+
