@@ -272,6 +272,21 @@ async function loadActiveSnapshot(query) {
   return result.rows?.[0] || null;
 }
 
+async function loadLatestSnapshot(query) {
+  const result = await query(
+    `SELECT w.tournament_id, w.state, w.source_server, w.snapshot, w.updated_at,
+            t.started_at, t.finished_at
+       FROM duel_tournament_web_snapshots w
+       LEFT JOIN duel_tournaments t ON t.tournament_id=w.tournament_id
+      ORDER BY
+        CASE WHEN w.state='finished' THEN 0 ELSE 1 END,
+        COALESCE(t.finished_at, w.updated_at) DESC,
+        w.updated_at DESC
+      LIMIT 1`,
+  );
+  return result.rows?.[0] || null;
+}
+
 async function kitCatalog(query) {
   const result = await query(
     `SELECT kit_key, display_name, icon_material
@@ -514,10 +529,19 @@ function installTournamentWebSync({ app, query, pool }) {
 
   app.get('/api/tournaments/active', async (_req, res) => {
     try {
-      const row = await loadActiveSnapshot(query);
+      let row = await loadActiveSnapshot(query);
+      let archived = false;
+
+      // S'il n'y a plus de tournoi actif, on garde à l'écran le dernier tournoi connu
+      // au lieu de renvoyer un bracket d'exemple ou une page vide.
+      if (!row) {
+        row = await loadLatestSnapshot(query);
+        archived = Boolean(row);
+      }
+
       if (!row) {
         res.set('Cache-Control', 'no-store');
-        return res.status(404).json({ error: 'Aucun tournoi actif.' });
+        return res.status(404).json({ error: 'Aucun tournoi synchronisé.' });
       }
 
       const snapshot = safeJsonParse(row.snapshot, null);
@@ -527,9 +551,10 @@ function installTournamentWebSync({ app, query, pool }) {
 
       const catalog = await kitCatalog(query);
       const tournament = publicTournament(snapshot, row, catalog);
+      tournament.archived = archived;
 
       res.set('Cache-Control', 'no-store, max-age=0');
-      return res.json({ tournament });
+      return res.json({ tournament, archived });
     } catch (error) {
       console.error('[tournaments/active]', error);
       return res.status(500).json({ error: 'Impossible de charger le tournoi.' });

@@ -442,33 +442,64 @@ function renderTournament(tournament, { preview = false } = {}) {
   renderFeaturedMatch(tournament);
 }
 
-async function loadTournament() {
+let lastTournamentFingerprint = '';
+let tournamentRefreshTimer = 0;
+let hasRenderedSyncedTournament = false;
+
+function tournamentFingerprint(tournament) {
   try {
-    const data = await Trizone.json('/api/tournaments/active');
+    return JSON.stringify(tournament);
+  } catch {
+    return String(Date.now());
+  }
+}
+
+async function loadTournament({ initial = false } = {}) {
+  try {
+    // Le paramètre empêche un cache intermédiaire de figer le bracket.
+    const data = await Trizone.json(`/api/tournaments/active?_=${Date.now()}`);
     const tournament = data?.tournament || data;
 
     if (!tournament || typeof tournament !== 'object') {
       throw new Error('Réponse tournoi invalide.');
     }
 
-    renderTournament(tournament, { preview: false });
+    const fingerprint = tournamentFingerprint(tournament);
+    if (fingerprint !== lastTournamentFingerprint) {
+      lastTournamentFingerprint = fingerprint;
+      renderTournament(tournament, { preview: false });
+      hasRenderedSyncedTournament = true;
+    }
   } catch (error) {
-    console.info(
-      '[tournois] API tournoi pas encore branchée, affichage de l’aperçu.',
-      error?.message || error
-    );
-
-    renderTournament(TOURNAMENT_PREVIEW, { preview: true });
+    // Une coupure API temporaire ne doit pas remplacer le dernier vrai tournoi déjà affiché.
+    if (!hasRenderedSyncedTournament && initial) {
+      console.info(
+        '[tournois] Aucun tournoi synchronisé disponible, affichage de l’aperçu.',
+        error?.message || error
+      );
+      renderTournament(TOURNAMENT_PREVIEW, { preview: true });
+    }
   }
+}
+
+function startTournamentAutoRefresh() {
+  if (tournamentRefreshTimer) clearInterval(tournamentRefreshTimer);
+  tournamentRefreshTimer = window.setInterval(() => {
+    loadTournament().catch(() => {});
+  }, 2000);
 }
 
 async function bootTournaments() {
   trizoneHeader('tournaments');
   trizoneFooter();
   await Trizone.boot();
-  await loadTournament();
+  await loadTournament({ initial: true });
+  startTournamentAutoRefresh();
 
   window.addEventListener('resize', drawBracketConnectors, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) loadTournament().catch(() => {});
+  });
 }
 
 document.addEventListener('DOMContentLoaded', bootTournaments);
