@@ -5,89 +5,103 @@ const PREVIEW_PLAYERS = [
   'Vortyx', 'Frozenn', 'PandaX', 'Zorak_', 'Minee', 'Raxo_', 'Keno_', 'Yuma'
 ];
 
+function buildPreviewRound({ round, players, states = [], firstTo = 2, kit, closeScores = false }) {
+  const matches = [];
+  const winners = [];
+
+  for (let i = 0; i < players.length; i += 2) {
+    const index = i / 2;
+    const p1 = players[i] || null;
+    const p2 = players[i + 1] || null;
+    const state = states[index] || 'pending';
+    const player1Wins = index % 2 === 0;
+    const complete = state === 'finished' && p1 && p2;
+    const live = state === 'live' && p1 && p2;
+    const winner = complete ? (player1Wins ? p1 : p2) : null;
+
+    let score1;
+    let score2;
+    if (complete) {
+      score1 = player1Wins ? firstTo : (closeScores ? Math.max(0, firstTo - 1) : 0);
+      score2 = player1Wins ? (closeScores ? Math.max(0, firstTo - 1) : 0) : firstTo;
+    } else if (live) {
+      score1 = 1;
+      score2 = 1;
+    }
+
+    matches.push({
+      id: `r${round}-${index + 1}`,
+      round,
+      state,
+      first_to: firstTo,
+      kit,
+      player1: p1 ? { username: p1, score: score1, winner: complete && player1Wins } : null,
+      player2: p2 ? { username: p2, score: score2, winner: complete && !player1Wins } : null,
+    });
+
+    winners.push(winner);
+  }
+
+  return { matches, winners };
+}
+
 function createPreviewTournament() {
   const kit = { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' };
   const matches = [];
 
-  const roundOneWinners = [];
-  for (let i = 0; i < PREVIEW_PLAYERS.length; i += 2) {
-    const p1 = PREVIEW_PLAYERS[i];
-    const p2 = PREVIEW_PLAYERS[i + 1];
-    const player1Wins = (i / 2) % 2 === 0;
-    const winner = player1Wins ? p1 : p2;
-    roundOneWinners.push(winner);
-    matches.push({
-      id: `r1-${(i / 2) + 1}`,
-      round: 1,
-      state: 'finished',
-      first_to: 2,
-      kit,
-      player1: { username: p1, score: player1Wins ? 2 : 0, winner: player1Wins },
-      player2: { username: p2, score: player1Wins ? 0 : 2, winner: !player1Wins },
-    });
-  }
-
-  const quarterPairs = [];
-  for (let i = 0; i < roundOneWinners.length; i += 2) {
-    quarterPairs.push([roundOneWinners[i], roundOneWinners[i + 1]]);
-  }
-
-  const quarterWinners = [];
-  quarterPairs.forEach((pair, index) => {
-    const [p1, p2] = pair;
-    const state = index < 5 ? 'finished' : (index === 5 ? 'live' : 'pending');
-    const player1Wins = index % 2 === 0;
-    const winner = state === 'finished' ? (player1Wins ? p1 : p2) : null;
-    quarterWinners.push(winner);
-    matches.push({
-      id: `qf-${index + 1}`,
-      round: 2,
-      state,
-      first_to: 2,
-      kit,
-      player1: { username: p1, score: state === 'pending' ? undefined : (player1Wins ? (state === 'finished' ? 2 : 1) : 1), winner: state === 'finished' && player1Wins },
-      player2: { username: p2, score: state === 'pending' ? undefined : (player1Wins ? 1 : (state === 'finished' ? 2 : 1)), winner: state === 'finished' && !player1Wins },
-    });
-  });
-
-  const semiPairs = [];
-  for (let i = 0; i < quarterPairs.length; i += 2) {
-    semiPairs.push([
-      quarterWinners[i] || null,
-      quarterWinners[i + 1] || null,
-    ]);
-  }
-
-  const semiWinners = [];
-  semiPairs.forEach((pair, index) => {
-    const [p1, p2] = pair;
-    const state = index === 0 ? 'waiting' : 'pending';
-    semiWinners.push(null);
-    matches.push({
-      id: `sf-${index + 1}`,
-      round: 3,
-      state,
-      first_to: 2,
-      kit,
-      player1: p1 ? { username: p1 } : null,
-      player2: p2 ? { username: p2 } : null,
-    });
-  });
-
-  matches.push({
-    id: 'final-1',
-    round: 4,
-    state: 'pending',
-    first_to: 2,
+  // 32 joueurs = 31 matchs = 5 tours.
+  const r1 = buildPreviewRound({
+    round: 1,
+    players: PREVIEW_PLAYERS,
+    states: Array(16).fill('finished'),
+    firstTo: 2,
     kit,
-    player1: null,
-    player2: null,
+    closeScores: true,
   });
+  matches.push(...r1.matches);
+
+  const r2 = buildPreviewRound({
+    round: 2,
+    players: r1.winners,
+    states: Array(8).fill('finished'),
+    firstTo: 2,
+    kit,
+    closeScores: true,
+  });
+  matches.push(...r2.matches);
+
+  const r3 = buildPreviewRound({
+    round: 3,
+    players: r2.winners,
+    states: ['finished', 'finished', 'live', 'pending'],
+    firstTo: 2,
+    kit,
+    closeScores: true,
+  });
+  matches.push(...r3.matches);
+
+  const r4 = buildPreviewRound({
+    round: 4,
+    players: r3.winners,
+    states: ['pending', 'pending'],
+    firstTo: 2,
+    kit,
+  });
+  matches.push(...r4.matches);
+
+  const r5 = buildPreviewRound({
+    round: 5,
+    players: r4.winners,
+    states: ['pending'],
+    firstTo: 2,
+    kit,
+  });
+  matches.push(...r5.matches);
 
   return {
     id: 'trizone-cup-7',
     name: 'TRIZONE CUP #7',
-    description: 'Exemple de tournoi PvP Trizone avec tableau complet, kit affiché et format FT2 pour chaque match.',
+    description: 'Exemple complet d’un tournoi PvP Trizone à 32 joueurs, avec le kit et le format FT2 de chaque match.',
     state: 'running',
     phase: 'Quarts de finale',
     format: 'Élimination directe',
@@ -133,7 +147,11 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat('fr-CH', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date).replace(',', ' ·');
 }
 
@@ -148,16 +166,42 @@ function roundName(round, maxRound) {
 }
 
 function resolveFirstTo(match, tournament = {}) {
-  const explicit = Number(match?.first_to || match?.firstTo || match?.wins_required || match?.winsRequired || tournament?.first_to || tournament?.firstTo || tournament?.wins_required || tournament?.winsRequired);
+  const explicit = Number(
+    match?.first_to ||
+    match?.firstTo ||
+    match?.wins_required ||
+    match?.winsRequired ||
+    tournament?.first_to ||
+    tournament?.firstTo ||
+    tournament?.wins_required ||
+    tournament?.winsRequired
+  );
+
   if (Number.isFinite(explicit) && explicit > 0) return explicit;
-  const bestOf = Number(match?.best_of || match?.bestOf || tournament?.best_of || tournament?.bestOf || 0);
-  if (Number.isFinite(bestOf) && bestOf > 0) return Math.max(1, Math.ceil(bestOf / 2));
+
+  // Compatibilité avec les anciennes données BOx si l'API en envoie encore.
+  const bestOf = Number(
+    match?.best_of ||
+    match?.bestOf ||
+    tournament?.best_of ||
+    tournament?.bestOf ||
+    0
+  );
+
+  if (Number.isFinite(bestOf) && bestOf > 0) {
+    return Math.max(1, Math.ceil(bestOf / 2));
+  }
+
   return 2;
 }
 
-function ftLabel(firstTo) {
+function ftLongLabel(firstTo) {
   const safe = Math.max(1, Number(firstTo || 2));
   return `FT${safe} · first to ${safe} win${safe > 1 ? 's' : ''}`;
+}
+
+function ftShortLabel(firstTo) {
+  return `FT${Math.max(1, Number(firstTo || 2))}`;
 }
 
 function playerHtml(player) {
@@ -171,6 +215,7 @@ function playerHtml(player) {
 
   const winner = player.winner === true;
   const score = Number.isFinite(Number(player.score)) ? Number(player.score) : '—';
+
   return `<div class="tournament-player ${winner ? 'is-winner' : ''}">
     ${Trizone.minecraftPlayerHeadHtml(player)}
     <span class="tournament-player-name">${Trizone.escapeHtml(Trizone.minecraftDisplayName(player.username))}</span>
@@ -182,33 +227,102 @@ function matchHtml(match, tournament = {}, isFinal = false) {
   const state = normalizedMatchState(match.state);
   const firstTo = resolveFirstTo(match, tournament);
   const kit = match.kit || tournament.kit || { name: 'Kit à déterminer', icon: 'IRON_SWORD' };
-  return `<article class="tournament-match is-${state} ${isFinal ? 'is-final' : ''}">
+
+  return `<article
+    class="tournament-match is-${state} ${isFinal ? 'is-final' : ''}"
+    data-match-id="${Trizone.escapeHtml(match.id || '')}">
     <div class="tournament-match-head">
       <span class="match-state is-${state}">${matchStateLabel(state)}</span>
-      <small>${ftLabel(firstTo)}</small>
+      <small title="${Trizone.escapeHtml(ftLongLabel(firstTo))}">${ftShortLabel(firstTo)}</small>
     </div>
     ${playerHtml(match.player1)}
     ${playerHtml(match.player2)}
     <div class="tournament-match-foot">
-      <span class="tournament-match-kit">${Trizone.minecraftIconHtml(kit.icon || 'IRON_SWORD', '', 'mc-icon-tournament')}<span>${Trizone.escapeHtml(kit.name || kit.key || 'Kit')}</span></span>
+      <span class="tournament-match-kit">
+        ${Trizone.minecraftIconHtml(kit.icon || 'IRON_SWORD', '', 'mc-icon-tournament')}
+        <span>${Trizone.escapeHtml(kit.name || kit.key || 'Kit')}</span>
+      </span>
       <span>#${Trizone.escapeHtml(match.id || 'match')}</span>
     </div>
   </article>`;
 }
 
+let connectorFrame = 0;
+
+function drawBracketConnectors() {
+  cancelAnimationFrame(connectorFrame);
+
+  connectorFrame = requestAnimationFrame(() => {
+    const root = document.getElementById('tournament-bracket');
+    if (!root) return;
+
+    root.querySelector('.tournament-connectors')?.remove();
+
+    const rounds = [...root.querySelectorAll('.tournament-round')];
+    if (rounds.length < 2) return;
+
+    const rootRect = root.getBoundingClientRect();
+    if (!rootRect.width || !rootRect.height) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'tournament-connectors');
+    svg.setAttribute('viewBox', `0 0 ${rootRect.width} ${rootRect.height}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('aria-hidden', 'true');
+
+    for (let roundIndex = 0; roundIndex < rounds.length - 1; roundIndex += 1) {
+      const sourceMatches = [...rounds[roundIndex].querySelectorAll('.tournament-match')];
+      const targetMatches = [...rounds[roundIndex + 1].querySelectorAll('.tournament-match')];
+
+      targetMatches.forEach((target, targetIndex) => {
+        const sources = [
+          sourceMatches[targetIndex * 2],
+          sourceMatches[targetIndex * 2 + 1],
+        ].filter(Boolean);
+
+        if (!sources.length) return;
+
+        const targetRect = target.getBoundingClientRect();
+        const targetX = targetRect.left - rootRect.left;
+        const targetY = targetRect.top - rootRect.top + targetRect.height / 2;
+
+        sources.forEach((source) => {
+          const sourceRect = source.getBoundingClientRect();
+          const sourceX = sourceRect.right - rootRect.left;
+          const sourceY = sourceRect.top - rootRect.top + sourceRect.height / 2;
+          const midX = sourceX + Math.max(6, (targetX - sourceX) * 0.5);
+
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', `M ${sourceX} ${sourceY} H ${midX} V ${targetY} H ${targetX}`);
+          path.setAttribute('class', 'tournament-connector-path');
+          svg.appendChild(path);
+        });
+      });
+    }
+
+    root.prepend(svg);
+  });
+}
+
 function renderBracket(tournament) {
   const root = document.getElementById('tournament-bracket');
   const matches = Array.isArray(tournament.matches) ? tournament.matches : [];
+
   if (!matches.length) {
-    root.innerHTML = `<div class="empty-state tournament-empty"><h2>Aucun match</h2><p>Le tableau apparaîtra ici dès que le tournoi sera synchronisé depuis Minecraft.</p></div>`;
+    root.innerHTML = `<div class="empty-state tournament-empty">
+      <h2>Aucun match</h2>
+      <p>Le tableau apparaîtra ici dès que le tournoi sera synchronisé depuis Minecraft.</p>
+    </div>`;
     return;
   }
 
   const maxRound = Math.max(...matches.map((match) => Number(match.round || match.round_no || 1)));
   const rounds = [];
+
   for (let round = 1; round <= maxRound; round += 1) {
     const roundMatches = matches.filter((match) => Number(match.round || match.round_no || 1) === round);
-    rounds.push(`<section class="tournament-round">
+
+    rounds.push(`<section class="tournament-round" data-round="${round}">
       <div class="tournament-round-title">${roundName(round, maxRound)}</div>
       <div class="tournament-round-matches">
         ${roundMatches.map((match) => matchHtml(match, tournament, round === maxRound)).join('')}
@@ -217,10 +331,14 @@ function renderBracket(tournament) {
   }
 
   root.style.setProperty('--round-count', String(maxRound));
-  root.style.minWidth = `${Math.max(960, maxRound * 280)}px`;
+  root.style.minWidth = '0';
   root.innerHTML = rounds.join('');
+
   Trizone.bindMinecraftIcons(root);
   Trizone.bindMinecraftPlayerHeads(root);
+
+  drawBracketConnectors();
+  setTimeout(drawBracketConnectors, 120);
 }
 
 function featuredPlayer(player) {
@@ -230,15 +348,21 @@ function featuredPlayer(player) {
       <strong class="muted">À déterminer</strong>
     </div>`;
   }
-  return `<div class="featured-player">${Trizone.minecraftPlayerHeadHtml(player)}<strong>${Trizone.escapeHtml(Trizone.minecraftDisplayName(player.username))}</strong></div>`;
+
+  return `<div class="featured-player">
+    ${Trizone.minecraftPlayerHeadHtml(player)}
+    <strong>${Trizone.escapeHtml(Trizone.minecraftDisplayName(player.username))}</strong>
+  </div>`;
 }
 
 function renderFeaturedMatch(tournament) {
   const root = document.getElementById('tournament-featured-match');
   const matches = Array.isArray(tournament.matches) ? tournament.matches : [];
-  const match = matches.find((item) => normalizedMatchState(item.state) === 'live')
-    || matches.find((item) => normalizedMatchState(item.state) === 'waiting')
-    || matches[matches.length - 1];
+
+  const match =
+    matches.find((item) => normalizedMatchState(item.state) === 'live') ||
+    matches.find((item) => normalizedMatchState(item.state) === 'waiting') ||
+    matches[matches.length - 1];
 
   if (!match) {
     root.innerHTML = '<p class="muted">Aucun match disponible.</p>';
@@ -260,12 +384,13 @@ function renderFeaturedMatch(tournament) {
     </div>
     <div class="featured-meta">
       <div><span>Kit</span><strong>${Trizone.escapeHtml(kit.name || kit.key || 'Kit')}</strong></div>
-      <div><span>Format</span><strong>${ftLabel(firstTo)}</strong></div>
+      <div><span>Format</span><strong>${ftLongLabel(firstTo)}</strong></div>
       <div><span>Score</span><strong>${match.player1?.score ?? '—'} - ${match.player2?.score ?? '—'}</strong></div>
     </div>`;
 
   const liveDot = document.getElementById('live-dot');
   liveDot.classList.toggle('is-live', state === 'live');
+
   Trizone.bindMinecraftPlayerHeads(root);
 }
 
@@ -280,23 +405,35 @@ function renderTournament(tournament, { preview = false } = {}) {
 
   document.getElementById('tournament-name').textContent = tournament.name || 'Tournoi Trizone';
   document.getElementById('tournament-breadcrumb-name').textContent = tournament.name || 'Tournoi';
-  document.getElementById('tournament-description').textContent = tournament.description || 'Tournoi PvP Trizone.';
+  document.getElementById('tournament-description').textContent =
+    tournament.description || 'Tournoi PvP Trizone.';
 
   const status = document.getElementById('tournament-status');
   status.textContent = stateLabel(state);
   status.className = `tournament-status is-${state}`;
 
   const kitRoot = document.getElementById('tournament-kit');
-  kitRoot.innerHTML = `${Trizone.minecraftIconHtml(kit.icon || 'IRON_SWORD', '', 'mc-icon-tournament')}<span>${Trizone.escapeHtml(kit.name || kit.key || 'Variable')}</span>`;
+  kitRoot.innerHTML = `
+    ${Trizone.minecraftIconHtml(kit.icon || 'IRON_SWORD', '', 'mc-icon-tournament')}
+    <span>${Trizone.escapeHtml(kit.name || kit.key || 'Variable')}</span>`;
   Trizone.bindMinecraftIcons(kitRoot);
 
-  document.getElementById('tournament-format').textContent = tournament.format || 'Élimination directe';
-  document.getElementById('tournament-best-of').textContent = ftLabel(firstTo);
+  document.getElementById('tournament-format').textContent =
+    tournament.format || 'Élimination directe';
+
+  document.getElementById('tournament-best-of').textContent = ftLongLabel(firstTo);
   document.getElementById('tournament-phase').textContent = tournament.phase || 'À déterminer';
-  document.getElementById('tournament-players').textContent = maxPlayers ? `${players} / ${maxPlayers}` : String(players || '—');
-  document.getElementById('tournament-type').textContent = tournament.format || 'Élimination directe';
-  document.getElementById('tournament-start').textContent = formatDate(tournament.started_at || tournament.startedAt);
-  document.getElementById('tournament-progress').textContent = matches.length ? `${completed} / ${matches.length} matchs terminés` : 'Aucun match';
+  document.getElementById('tournament-players').textContent =
+    maxPlayers ? `${players} / ${maxPlayers}` : String(players || '—');
+
+  document.getElementById('tournament-type').textContent =
+    tournament.format || 'Élimination directe';
+
+  document.getElementById('tournament-start').textContent =
+    formatDate(tournament.started_at || tournament.startedAt);
+
+  document.getElementById('tournament-progress').textContent =
+    matches.length ? `${completed} / ${matches.length} matchs terminés` : 'Aucun match';
 
   const source = document.getElementById('tournament-source');
   source.hidden = !preview;
@@ -309,10 +446,18 @@ async function loadTournament() {
   try {
     const data = await Trizone.json('/api/tournaments/active');
     const tournament = data?.tournament || data;
-    if (!tournament || typeof tournament !== 'object') throw new Error('Réponse tournoi invalide.');
+
+    if (!tournament || typeof tournament !== 'object') {
+      throw new Error('Réponse tournoi invalide.');
+    }
+
     renderTournament(tournament, { preview: false });
   } catch (error) {
-    console.info('[tournois] API tournoi pas encore branchée, affichage de l’aperçu.', error?.message || error);
+    console.info(
+      '[tournois] API tournoi pas encore branchée, affichage de l’aperçu.',
+      error?.message || error
+    );
+
     renderTournament(TOURNAMENT_PREVIEW, { preview: true });
   }
 }
@@ -322,6 +467,8 @@ async function bootTournaments() {
   trizoneFooter();
   await Trizone.boot();
   await loadTournament();
+
+  window.addEventListener('resize', drawBracketConnectors, { passive: true });
 }
 
 document.addEventListener('DOMContentLoaded', bootTournaments);

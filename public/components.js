@@ -1,4 +1,47 @@
+
+function trizoneInstallGlobalTheme() {
+  if (document.getElementById('trizone-global-theme')) return;
+
+  const style = document.createElement('style');
+  style.id = 'trizone-global-theme';
+  style.textContent = `
+    html,
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #352741 #0f0d13;
+    }
+
+    *::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: #0f0d13;
+      border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      min-height: 34px;
+      background: #352741;
+      border: 2px solid #0f0d13;
+      border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: #4b355e;
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: #0f0d13;
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
 function trizoneHeader(active = '') {
+  trizoneInstallGlobalTheme();
   const root = document.getElementById('site-header');
   if (!root) return;
   root.innerHTML = `
