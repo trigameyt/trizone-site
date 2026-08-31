@@ -1,60 +1,106 @@
-const TOURNAMENT_PREVIEW = {
-  id: 'trizone-cup-7',
-  name: 'TRIZONE CUP #7',
-  description: 'Tournoi PvP Trizone en élimination directe. Suis les affrontements, le kit choisi et les manches de chaque match.',
-  state: 'running',
-  phase: 'Demi-finales',
-  format: 'Élimination directe',
-  players: 8,
-  max_players: 8,
-  started_at: '2026-08-31T18:00:00+02:00',
-  kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-  best_of: 3,
-  matches: [
-    {
-      id: 'qf-1', round: 1, state: 'finished', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'NeyZox', score: 2, winner: true },
-      player2: { username: 'Xylaro', score: 0, winner: false },
-    },
-    {
-      id: 'qf-2', round: 1, state: 'finished', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'BySlide', score: 2, winner: true },
-      player2: { username: 'LePanda_', score: 1, winner: false },
-    },
-    {
-      id: 'qf-3', round: 1, state: 'finished', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'ZeyKoh', score: 2, winner: true },
-      player2: { username: 'Mathox', score: 0, winner: false },
-    },
-    {
-      id: 'qf-4', round: 1, state: 'finished', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'Wqnder', score: 2, winner: true },
-      player2: { username: 'ItzRayan', score: 1, winner: false },
-    },
-    {
-      id: 'sf-1', round: 2, state: 'finished', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'NeyZox', score: 2, winner: true },
-      player2: { username: 'BySlide', score: 1, winner: false },
-    },
-    {
-      id: 'sf-2', round: 2, state: 'live', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'ZeyKoh', score: 1, winner: false },
-      player2: { username: 'Wqnder', score: 1, winner: false },
-    },
-    {
-      id: 'final-1', round: 3, state: 'pending', best_of: 3,
-      kit: { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' },
-      player1: { username: 'NeyZox' },
-      player2: null,
-    },
-  ],
-};
+const PREVIEW_PLAYERS = [
+  'NeyZox', 'Xylaro', 'BySlide', 'LePanda_', 'ZeyKoh', 'Mathox', 'Wqnder', 'ItzRayan',
+  'KylianPvP', 'SkyZer', 'DarkNono', 'Pixel_', 'ItsNexy_', 'Blaze_75', 'AzertyX', 'WshNono',
+  'Kyomuu', 'LeVraiCube', 'Skaazyy', 'NeoXZ_', 'Trizien', 'Craftix', 'Lunex', 'ShadowPvP',
+  'Vortyx', 'Frozenn', 'PandaX', 'Zorak_', 'Minee', 'Raxo_', 'Keno_', 'Yuma'
+];
+
+function createPreviewTournament() {
+  const kit = { key: 'nodebuff', name: 'NoDebuff', icon: 'SPLASH_POTION' };
+  const matches = [];
+
+  const roundOneWinners = [];
+  for (let i = 0; i < PREVIEW_PLAYERS.length; i += 2) {
+    const p1 = PREVIEW_PLAYERS[i];
+    const p2 = PREVIEW_PLAYERS[i + 1];
+    const player1Wins = (i / 2) % 2 === 0;
+    const winner = player1Wins ? p1 : p2;
+    roundOneWinners.push(winner);
+    matches.push({
+      id: `r1-${(i / 2) + 1}`,
+      round: 1,
+      state: 'finished',
+      first_to: 2,
+      kit,
+      player1: { username: p1, score: player1Wins ? 2 : 0, winner: player1Wins },
+      player2: { username: p2, score: player1Wins ? 0 : 2, winner: !player1Wins },
+    });
+  }
+
+  const quarterPairs = [];
+  for (let i = 0; i < roundOneWinners.length; i += 2) {
+    quarterPairs.push([roundOneWinners[i], roundOneWinners[i + 1]]);
+  }
+
+  const quarterWinners = [];
+  quarterPairs.forEach((pair, index) => {
+    const [p1, p2] = pair;
+    const state = index < 5 ? 'finished' : (index === 5 ? 'live' : 'pending');
+    const player1Wins = index % 2 === 0;
+    const winner = state === 'finished' ? (player1Wins ? p1 : p2) : null;
+    quarterWinners.push(winner);
+    matches.push({
+      id: `qf-${index + 1}`,
+      round: 2,
+      state,
+      first_to: 2,
+      kit,
+      player1: { username: p1, score: state === 'pending' ? undefined : (player1Wins ? (state === 'finished' ? 2 : 1) : 1), winner: state === 'finished' && player1Wins },
+      player2: { username: p2, score: state === 'pending' ? undefined : (player1Wins ? 1 : (state === 'finished' ? 2 : 1)), winner: state === 'finished' && !player1Wins },
+    });
+  });
+
+  const semiPairs = [];
+  for (let i = 0; i < quarterPairs.length; i += 2) {
+    semiPairs.push([
+      quarterWinners[i] || null,
+      quarterWinners[i + 1] || null,
+    ]);
+  }
+
+  const semiWinners = [];
+  semiPairs.forEach((pair, index) => {
+    const [p1, p2] = pair;
+    const state = index === 0 ? 'waiting' : 'pending';
+    semiWinners.push(null);
+    matches.push({
+      id: `sf-${index + 1}`,
+      round: 3,
+      state,
+      first_to: 2,
+      kit,
+      player1: p1 ? { username: p1 } : null,
+      player2: p2 ? { username: p2 } : null,
+    });
+  });
+
+  matches.push({
+    id: 'final-1',
+    round: 4,
+    state: 'pending',
+    first_to: 2,
+    kit,
+    player1: null,
+    player2: null,
+  });
+
+  return {
+    id: 'trizone-cup-7',
+    name: 'TRIZONE CUP #7',
+    description: 'Exemple de tournoi PvP Trizone avec tableau complet, kit affiché et format FT2 pour chaque match.',
+    state: 'running',
+    phase: 'Quarts de finale',
+    format: 'Élimination directe',
+    players: 32,
+    max_players: 32,
+    started_at: '2026-08-31T18:00:00+02:00',
+    kit,
+    first_to: 2,
+    matches,
+  };
+}
+
+const TOURNAMENT_PREVIEW = createPreviewTournament();
 
 function normalizedState(value) {
   const state = String(value || '').toLowerCase();
@@ -101,6 +147,19 @@ function roundName(round, maxRound) {
   return `Tour ${round}`;
 }
 
+function resolveFirstTo(match, tournament = {}) {
+  const explicit = Number(match?.first_to || match?.firstTo || match?.wins_required || match?.winsRequired || tournament?.first_to || tournament?.firstTo || tournament?.wins_required || tournament?.winsRequired);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const bestOf = Number(match?.best_of || match?.bestOf || tournament?.best_of || tournament?.bestOf || 0);
+  if (Number.isFinite(bestOf) && bestOf > 0) return Math.max(1, Math.ceil(bestOf / 2));
+  return 2;
+}
+
+function ftLabel(firstTo) {
+  const safe = Math.max(1, Number(firstTo || 2));
+  return `FT${safe} · first to ${safe} win${safe > 1 ? 's' : ''}`;
+}
+
 function playerHtml(player) {
   if (!player?.username) {
     return `<div class="tournament-player is-empty">
@@ -119,14 +178,14 @@ function playerHtml(player) {
   </div>`;
 }
 
-function matchHtml(match, isFinal = false) {
+function matchHtml(match, tournament = {}, isFinal = false) {
   const state = normalizedMatchState(match.state);
-  const bestOf = Math.max(1, Number(match.best_of || match.bestOf || 3));
-  const kit = match.kit || { name: 'Kit à déterminer', icon: 'IRON_SWORD' };
+  const firstTo = resolveFirstTo(match, tournament);
+  const kit = match.kit || tournament.kit || { name: 'Kit à déterminer', icon: 'IRON_SWORD' };
   return `<article class="tournament-match is-${state} ${isFinal ? 'is-final' : ''}">
     <div class="tournament-match-head">
       <span class="match-state is-${state}">${matchStateLabel(state)}</span>
-      <small>BO${bestOf} · ${bestOf} manche${bestOf > 1 ? 's' : ''}</small>
+      <small>${ftLabel(firstTo)}</small>
     </div>
     ${playerHtml(match.player1)}
     ${playerHtml(match.player2)}
@@ -152,13 +211,13 @@ function renderBracket(tournament) {
     rounds.push(`<section class="tournament-round">
       <div class="tournament-round-title">${roundName(round, maxRound)}</div>
       <div class="tournament-round-matches">
-        ${roundMatches.map((match) => matchHtml(match, round === maxRound)).join('')}
+        ${roundMatches.map((match) => matchHtml(match, tournament, round === maxRound)).join('')}
       </div>
     </section>`);
   }
 
   root.style.setProperty('--round-count', String(maxRound));
-  root.style.minWidth = `${Math.max(800, maxRound * 260)}px`;
+  root.style.minWidth = `${Math.max(960, maxRound * 280)}px`;
   root.innerHTML = rounds.join('');
   Trizone.bindMinecraftIcons(root);
   Trizone.bindMinecraftPlayerHeads(root);
@@ -189,7 +248,7 @@ function renderFeaturedMatch(tournament) {
   const maxRound = Math.max(...matches.map((item) => Number(item.round || item.round_no || 1)));
   const round = Number(match.round || match.round_no || 1);
   const state = normalizedMatchState(match.state);
-  const bestOf = Math.max(1, Number(match.best_of || match.bestOf || tournament.best_of || 3));
+  const firstTo = resolveFirstTo(match, tournament);
   const kit = match.kit || tournament.kit || { name: 'À déterminer', icon: 'IRON_SWORD' };
 
   root.innerHTML = `
@@ -201,7 +260,7 @@ function renderFeaturedMatch(tournament) {
     </div>
     <div class="featured-meta">
       <div><span>Kit</span><strong>${Trizone.escapeHtml(kit.name || kit.key || 'Kit')}</strong></div>
-      <div><span>Format</span><strong>BO${bestOf} · ${bestOf} manche${bestOf > 1 ? 's' : ''}</strong></div>
+      <div><span>Format</span><strong>${ftLabel(firstTo)}</strong></div>
       <div><span>Score</span><strong>${match.player1?.score ?? '—'} - ${match.player2?.score ?? '—'}</strong></div>
     </div>`;
 
@@ -213,7 +272,7 @@ function renderFeaturedMatch(tournament) {
 function renderTournament(tournament, { preview = false } = {}) {
   const state = normalizedState(tournament.state);
   const kit = tournament.kit || { name: 'Variable', icon: 'IRON_SWORD' };
-  const bestOf = Math.max(1, Number(tournament.best_of || tournament.bestOf || 3));
+  const firstTo = resolveFirstTo({}, tournament);
   const players = Number(tournament.players || tournament.player_count || 0);
   const maxPlayers = Number(tournament.max_players || tournament.maxPlayers || players || 0);
   const matches = Array.isArray(tournament.matches) ? tournament.matches : [];
@@ -232,7 +291,7 @@ function renderTournament(tournament, { preview = false } = {}) {
   Trizone.bindMinecraftIcons(kitRoot);
 
   document.getElementById('tournament-format').textContent = tournament.format || 'Élimination directe';
-  document.getElementById('tournament-best-of').textContent = `BO${bestOf} · ${bestOf} manche${bestOf > 1 ? 's' : ''}`;
+  document.getElementById('tournament-best-of').textContent = ftLabel(firstTo);
   document.getElementById('tournament-phase').textContent = tournament.phase || 'À déterminer';
   document.getElementById('tournament-players').textContent = maxPlayers ? `${players} / ${maxPlayers}` : String(players || '—');
   document.getElementById('tournament-type').textContent = tournament.format || 'Élimination directe';
