@@ -216,6 +216,80 @@ function samePair(match, a, b) {
   return (m1 === a && m2 === b) || (m1 === b && m2 === a);
 }
 
+
+function sameMatchIdentity(incoming, previous) {
+  const incomingId = cleanString(incoming?.id || incoming?.match_id, 96, '');
+  const previousId = cleanString(previous?.id || previous?.match_id, 96, '');
+  if (incomingId && previousId && incomingId === previousId) return true;
+
+  const incomingRound = cleanInt(incoming?.round ?? incoming?.round_no, 0, 0, 64);
+  const previousRound = cleanInt(previous?.round ?? previous?.round_no, 0, 0, 64);
+  if (!incomingRound || incomingRound !== previousRound) return false;
+
+  const a = cleanUuid(incoming?.player1_uuid);
+  const b = cleanUuid(incoming?.player2_uuid);
+  return samePair(previous, a, b);
+}
+
+function mergeOneMatchFromPrevious(incoming, previous) {
+  if (!previous || !sameMatchIdentity(incoming, previous)) return incoming;
+
+  const merged = { ...incoming };
+  const previousState = normalizeState(previous.state, 'pending');
+  const incomingState = normalizeState(incoming.state, 'pending');
+
+  // Le Lobby ne connaît pas le score intermédiaire de la série.
+  // Les scores envoyés par PVPPractice restent donc la source de vérité
+  // tant que le Lobby n'en envoie pas explicitement.
+  if (merged.score1 == null && previous.score1 != null) {
+    merged.score1 = cleanInt(previous.score1, 0, 0, 20);
+  }
+  if (merged.score2 == null && previous.score2 != null) {
+    merged.score2 = cleanInt(previous.score2, 0, 0, 20);
+  }
+
+  if (!cleanUuid(merged.winner_uuid) && cleanUuid(previous.winner_uuid)) {
+    merged.winner_uuid = cleanUuid(previous.winner_uuid);
+  }
+
+  const incomingFirstTo = cleanInt(merged.first_to, 0, 0, 20);
+  const previousFirstTo = cleanInt(previous.first_to, 0, 0, 20);
+  if (!incomingFirstTo && previousFirstTo) merged.first_to = previousFirstTo;
+
+  // PVPPractice peut être quelques ticks en avance sur le snapshot Lobby.
+  // On empêche un snapshot plus ancien de faire revenir un match de
+  // "running" à "pending", ou de faire disparaître une fin de série.
+  if (previousState === 'finished' && incomingState !== 'finished') {
+    merged.state = 'finished';
+  } else if (previousState === 'running' && incomingState === 'pending') {
+    merged.state = 'running';
+  }
+
+  return merged;
+}
+
+function mergePvpScoresIntoLobbySnapshot(incomingTournament, previousTournament) {
+  if (!previousTournament || typeof previousTournament !== 'object') return incomingTournament;
+
+  const previousMatches = Array.isArray(previousTournament.matches)
+    ? previousTournament.matches
+    : [];
+
+  if (!previousMatches.length || !Array.isArray(incomingTournament.matches)) {
+    return incomingTournament;
+  }
+
+  const mergedMatches = incomingTournament.matches.map((incoming) => {
+    const previous = previousMatches.find((candidate) => sameMatchIdentity(incoming, candidate));
+    return mergeOneMatchFromPrevious(incoming, previous);
+  });
+
+  return {
+    ...incomingTournament,
+    matches: mergedMatches,
+  };
+}
+
 function pickScoreTarget(tournament, body) {
   const a = cleanUuid(body.player1_uuid);
   const b = cleanUuid(body.player2_uuid);
@@ -396,10 +470,28 @@ function installTournamentWebSync({ app, query, pool }) {
 
   app.post('/api/tournaments/sync', requireTournamentSecret, async (req, res) => {
     try {
-      const { sourceServer, tournament } = normalizeTournamentPayload(req.body);
+      const normalized = normalizeTournamentPayload(req.body);
+      const sourceServer = normalized.sourceServer;
+      let tournament = normalized.tournament;
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+
+        // Verrouille le snapshot pendant le merge : un POST score de PVPPractice
+        // ne peut ainsi pas être écrasé juste après par le snapshot périodique du Lobby.
+        const existing = await client.query(
+          `SELECT snapshot
+             FROM duel_tournament_web_snapshots
+            WHERE tournament_id=$1
+            LIMIT 1
+            FOR UPDATE`,
+          [tournament.id],
+        );
+
+        const previous = safeJsonParse(existing.rows?.[0]?.snapshot, null);
+        if (previous) {
+          tournament = mergePvpScoresIntoLobbySnapshot(tournament, previous);
+        }
 
         await upsertTournamentCore(client, tournament);
 
