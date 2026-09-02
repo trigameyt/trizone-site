@@ -524,6 +524,193 @@ function publicTournament(snapshot, dbRow, catalog) {
   };
 }
 
+
+function samePlayerReference(match, targetUuid, targetName) {
+  const p1Uuid = cleanUuid(match?.player1_uuid);
+  const p2Uuid = cleanUuid(match?.player2_uuid);
+  const p1Name = cleanString(match?.player1_name, 32, '').toLowerCase();
+  const p2Name = cleanString(match?.player2_name, 32, '').toLowerCase();
+
+  if (targetUuid && (p1Uuid === targetUuid || p2Uuid === targetUuid)) return true;
+  if (targetName && (p1Name === targetName || p2Name === targetName)) return true;
+  return false;
+}
+
+function playerSide(match, targetUuid, targetName) {
+  const p1Uuid = cleanUuid(match?.player1_uuid);
+  const p2Uuid = cleanUuid(match?.player2_uuid);
+  const p1Name = cleanString(match?.player1_name, 32, '').toLowerCase();
+  const p2Name = cleanString(match?.player2_name, 32, '').toLowerCase();
+
+  if (targetUuid) {
+    if (p1Uuid === targetUuid) return 1;
+    if (p2Uuid === targetUuid) return 2;
+  }
+  if (targetName) {
+    if (p1Name === targetName) return 1;
+    if (p2Name === targetName) return 2;
+  }
+  return 0;
+}
+
+function tournamentRoundResultLabel(round, maxRound) {
+  const distance = Math.max(0, maxRound - round);
+  if (distance === 0) return { label: 'Finaliste', placement: '2e', tone: 'silver' };
+  if (distance === 1) return { label: 'Demi-finaliste', placement: '3e–4e', tone: 'bronze' };
+  if (distance === 2) return { label: 'Quart-finaliste', placement: '5e–8e', tone: 'default' };
+  if (distance === 3) return { label: 'Huitième de finaliste', placement: '9e–16e', tone: 'default' };
+  if (distance === 4) return { label: 'Seizième de finaliste', placement: '17e–32e', tone: 'default' };
+  return { label: `Éliminé au tour ${round}`, placement: '', tone: 'default' };
+}
+
+function participantListed(snapshot, targetUuid, targetName) {
+  const participants = Array.isArray(snapshot?.participants) ? snapshot.participants : [];
+  return participants.some((entry) => {
+    if (typeof entry === 'string') return targetName && entry.toLowerCase() === targetName;
+    const uuid = cleanUuid(entry?.uuid || entry?.player_uuid);
+    const name = cleanString(entry?.username || entry?.name, 32, '').toLowerCase();
+    return Boolean((targetUuid && uuid === targetUuid) || (targetName && name === targetName));
+  });
+}
+
+function tournamentHistoryEntry(snapshot, dbRow, catalog, targetUuid, targetName) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const matches = Array.isArray(snapshot.matches) ? snapshot.matches : [];
+  const playerMatches = matches
+    .filter((match) => samePlayerReference(match, targetUuid, targetName))
+    .sort((a, b) => cleanInt(a.round, 1, 1, 64) - cleanInt(b.round, 1, 1, 64));
+
+  if (!playerMatches.length && !participantListed(snapshot, targetUuid, targetName)) return null;
+
+  const maxRound = matches.length
+    ? Math.max(...matches.map((m) => cleanInt(m.round, 1, 1, 64)))
+    : Math.max(1, cleanInt(snapshot.round, 1, 1, 64));
+
+  let resolvedUuid = targetUuid;
+  let resolvedName = targetName ? targetName : '';
+  for (const match of playerMatches) {
+    const side = playerSide(match, targetUuid, targetName);
+    if (side === 1) {
+      resolvedUuid ||= cleanUuid(match.player1_uuid);
+      resolvedName ||= cleanString(match.player1_name, 32, '');
+    } else if (side === 2) {
+      resolvedUuid ||= cleanUuid(match.player2_uuid);
+      resolvedName ||= cleanString(match.player2_name, 32, '');
+    }
+  }
+
+  const playerId = resolvedUuid || null;
+  let wins = 0;
+  let losses = 0;
+  let latestRound = 0;
+  let latestMatchState = 'pending';
+  let lossMatch = null;
+  let finalWin = null;
+  let thirdPlaceWin = null;
+  let thirdPlaceLoss = null;
+
+  for (const match of playerMatches) {
+    const side = playerSide(match, targetUuid || resolvedUuid, targetName || String(resolvedName).toLowerCase());
+    const state = normalizeState(match.state, 'pending');
+    const winner = cleanUuid(match.winner_uuid);
+    const myUuid = side === 1 ? cleanUuid(match.player1_uuid) : cleanUuid(match.player2_uuid);
+    latestRound = Math.max(latestRound, cleanInt(match.round, 1, 1, 64));
+    latestMatchState = state;
+
+    if (state === 'finished' && winner && myUuid) {
+      if (winner === myUuid) {
+        wins += 1;
+        if (Boolean(match.third_place)) thirdPlaceWin = match;
+        if (!Boolean(match.third_place) && cleanInt(match.round, 1, 1, 64) === maxRound) finalWin = match;
+      } else {
+        losses += 1;
+        lossMatch = match;
+        if (Boolean(match.third_place)) thirdPlaceLoss = match;
+      }
+    }
+  }
+
+  const normalizedTournamentState = normalizeState(snapshot.state, 'waiting');
+  let result = { label: 'Participant', placement: '', tone: 'default' };
+
+  if (thirdPlaceWin) {
+    result = { label: '3e place', placement: '3e', tone: 'bronze' };
+  } else if (thirdPlaceLoss) {
+    result = { label: '4e place', placement: '4e', tone: 'default' };
+  } else if (finalWin || (playerId && cleanUuid(snapshot.winner_uuid) === playerId)) {
+    result = { label: 'Champion', placement: '1er', tone: 'gold' };
+  } else if (lossMatch) {
+    result = tournamentRoundResultLabel(cleanInt(lossMatch.round, 1, 1, 64), maxRound);
+  } else if (normalizedTournamentState === 'registration' || normalizedTournamentState === 'waiting') {
+    result = { label: 'Inscrit', placement: '', tone: 'registration' };
+  } else if (normalizedTournamentState === 'running') {
+    result = { label: latestMatchState === 'running' ? 'Match en cours' : `En course · tour ${Math.max(1, latestRound)}`, placement: '', tone: 'live' };
+  } else if (normalizedTournamentState === 'finished') {
+    result = { label: 'Participant', placement: '', tone: 'default' };
+  }
+
+  const kitKey = cleanString(
+    playerMatches.find((m) => cleanString(m.kit, 64, ''))?.kit || snapshot.kit,
+    64,
+    'random',
+  );
+
+  return {
+    id: cleanString(snapshot.id || dbRow?.tournament_id, 96, ''),
+    name: cleanString(snapshot.name, 120, 'Tournoi Trizone'),
+    state: normalizedTournamentState,
+    format: displayFormat(snapshot.format),
+    kit: kitView(kitKey, catalog),
+    first_to: cleanInt(snapshot.first_to, 2, 1, 20),
+    players: cleanInt(snapshot.players, 0, 0, 512),
+    max_players: cleanInt(snapshot.max_players, 0, 0, 512),
+    rounds_reached: latestRound,
+    matches_played: wins + losses,
+    wins,
+    losses,
+    result: result.label,
+    placement: result.placement,
+    result_tone: result.tone,
+    started_at: dbRow?.started_at || null,
+    finished_at: dbRow?.finished_at || null,
+    updated_at: snapshot.updated_at || dbRow?.updated_at || null,
+  };
+}
+
+async function tournamentHistoryForPlayer(query, catalog, { uuid, name, limit = 50 }) {
+  const targetUuid = cleanUuid(uuid);
+  const targetName = cleanString(name, 32, '').toLowerCase();
+  if (!targetUuid && !targetName) return { player: null, summary: { participated: 0, championships: 0, finals: 0, podiums: 0 }, tournaments: [] };
+
+  const safeLimit = cleanInt(limit, 50, 1, 100);
+  const rows = await query(
+    `SELECT w.tournament_id, w.state, w.snapshot, w.updated_at,
+            t.started_at, t.finished_at
+       FROM duel_tournament_web_snapshots w
+       LEFT JOIN duel_tournaments t ON t.tournament_id=w.tournament_id
+      ORDER BY COALESCE(t.finished_at, t.started_at, w.updated_at) DESC, w.updated_at DESC
+      LIMIT 250`,
+  );
+
+  const entries = [];
+  for (const row of rows.rows || []) {
+    const snapshot = safeJsonParse(row.snapshot, null);
+    const entry = tournamentHistoryEntry(snapshot, row, catalog, targetUuid, targetName);
+    if (entry) entries.push(entry);
+    if (entries.length >= safeLimit) break;
+  }
+
+  const championships = entries.filter((entry) => entry.placement === '1er').length;
+  const finals = entries.filter((entry) => entry.placement === '1er' || entry.placement === '2e').length;
+  const podiums = entries.filter((entry) => ['1er', '2e', '3e'].includes(entry.placement)).length;
+
+  return {
+    player: { uuid: targetUuid, username: cleanString(name, 32, '') || null },
+    summary: { participated: entries.length, championships, finals, podiums },
+    tournaments: entries,
+  };
+}
+
 function installTournamentWebSync({ app, query, pool }) {
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') {
     throw new Error('Tournament WebSync: instance Express invalide.');
@@ -702,6 +889,29 @@ function installTournamentWebSync({ app, query, pool }) {
     }
   });
 
+  app.get('/api/tournaments/player', async (req, res) => {
+    try {
+      const uuid = cleanUuid(req.query?.uuid);
+      const player = cleanString(req.query?.player, 32, '');
+      if (!uuid && !player) {
+        return res.status(400).json({ error: 'Paramètre joueur manquant.' });
+      }
+
+      const catalog = await kitCatalog(query);
+      const history = await tournamentHistoryForPlayer(query, catalog, {
+        uuid,
+        name: player,
+        limit: req.query?.limit,
+      });
+
+      res.set('Cache-Control', 'no-store, max-age=0');
+      return res.json(history);
+    } catch (error) {
+      console.error('[tournaments/player]', error);
+      return res.status(500).json({ error: 'Impossible de charger les tournois du joueur.' });
+    }
+  });
+
   app.get('/api/tournaments/active', async (_req, res) => {
     try {
       let row = await loadActiveSnapshot(query);
@@ -764,7 +974,7 @@ function installTournamentWebSync({ app, query, pool }) {
     }
   });
 
-  console.log('[Tournament WebSync] API active: /api/tournaments/sync, /api/tournaments/match-score, /api/tournaments/active');
+  console.log('[Tournament WebSync] API active: /api/tournaments/sync, /api/tournaments/match-score, /api/tournaments/player, /api/tournaments/active');
 }
 
 module.exports = { installTournamentWebSync };

@@ -1,0 +1,107 @@
+.player-tournaments-section { padding-top: 0; }
+.player-tournaments-panel {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(18,14,23,.96), rgba(12,10,16,.96));
+  overflow: hidden;
+}
+.player-tournaments-head,
+.public-tournaments-head {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.player-tournaments-head span,
+.public-tournaments-head span {
+  display: block;
+  margin-bottom: 4px;
+  color: #9f78bc;
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.player-tournaments-head h2,
+.public-tournaments-head h3 { margin: 0; }
+.player-tournaments-head p { margin: 7px 0 0; color: #8f8795; font-size: .84rem; }
+#account-tournaments-root { padding: 18px; }
+.public-tournaments-section { margin-top: 22px; border-top: 1px solid var(--line-soft); }
+.public-tournaments-section #public-tournaments-root { padding: 14px 0 2px; }
+.public-tournaments-head { padding-left: 0; padding-right: 0; }
+
+.tournament-history-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.tournament-history-summary > div {
+  padding: 13px 14px;
+  border: 1px solid #30273a;
+  border-radius: 11px;
+  background: #0e0c12;
+}
+.tournament-history-summary span { display: block; color: #817987; font-size: .68rem; font-weight: 750; text-transform: uppercase; letter-spacing: .045em; }
+.tournament-history-summary strong { display: block; margin-top: 4px; color: #f0eaf4; font-size: 1.25rem; }
+.tournament-history-list { display: grid; gap: 9px; }
+.tournament-history-card {
+  display: grid;
+  grid-template-columns: 64px minmax(0,1fr);
+  align-items: stretch;
+  border: 1px solid #2d2634;
+  border-radius: 11px;
+  background: #0f0d13;
+  overflow: hidden;
+}
+.tournament-history-card.is-gold { border-color: rgba(255,205,75,.34); }
+.tournament-history-card.is-silver { border-color: rgba(196,207,220,.25); }
+.tournament-history-card.is-bronze { border-color: rgba(205,132,83,.28); }
+.tournament-history-card.is-live { border-color: rgba(75,210,154,.28); }
+.tournament-history-rank {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-right: 1px solid var(--line-soft);
+  background: rgba(140,60,255,.035);
+}
+.mc-icon-tournament-history { width: 27px; height: 27px; }
+.tournament-history-placement { color: #d9cae7; font-size: .72rem; }
+.tournament-history-main { padding: 12px 14px; min-width: 0; }
+.tournament-history-title-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.tournament-history-title-line h3 { margin: 0 0 5px; font-size: .94rem; }
+.tournament-history-title-line time { color: #716a78; font-size: .7rem; white-space: nowrap; }
+.tournament-history-result {
+  display: inline-flex;
+  padding: 3px 7px;
+  border: 1px solid #3b3046;
+  border-radius: 999px;
+  color: #bcaec8;
+  font-size: .62rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tournament-history-result.is-gold { color: #ffd86c; border-color: #665525; background: #1c180b; }
+.tournament-history-result.is-silver { color: #dce4eb; border-color: #48505a; background: #15191d; }
+.tournament-history-result.is-bronze { color: #e4a77c; border-color: #65402d; background: #1b120d; }
+.tournament-history-result.is-live { color: #79e5b3; border-color: #245542; background: #0c1913; }
+.tournament-history-result.is-registration { color: #d9bbff; border-color: #4d3267; background: #1a1124; }
+.tournament-history-meta { display: flex; flex-wrap: wrap; gap: 7px 13px; margin-top: 10px; color: #817989; font-size: .7rem; }
+.tournament-history-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.tournament-history-empty { display: flex; align-items: center; gap: 13px; padding: 18px; border: 1px dashed #352c3d; border-radius: 11px; color: #847b8b; }
+.tournament-history-empty strong { color: #ddd4e2; }
+.tournament-history-empty p { margin: 3px 0 0; font-size: .78rem; }
+.tournament-history-skeleton { min-height: 150px; }
+
+.duel-profile-dialog .tournament-history-summary.is-compact { grid-template-columns: repeat(4,minmax(80px,1fr)); }
+.duel-profile-dialog .tournament-history-summary.is-compact > div { padding: 10px; }
+.duel-profile-dialog .tournament-history-summary.is-compact strong { font-size: 1rem; }
+.duel-profile-dialog .tournament-history-card { grid-template-columns: 54px minmax(0,1fr); }
+
+@media (max-width: 760px) {
+  .tournament-history-summary,
+  .duel-profile-dialog .tournament-history-summary.is-compact { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tournament-history-title-line { flex-direction: column; gap: 4px; }
+  .tournament-history-title-line time { white-space: normal; }
+}

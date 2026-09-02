@@ -11,10 +11,12 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <link rel="manifest" href="/site.webmanifest">
   <link rel="stylesheet" href="/style.css?v=4160">
+  <link rel="stylesheet" href="/tournament-profile.css?v=1">
   <script defer src="/components.js?v=4151"></script>
   <script defer src="/common.js?v=4151"></script>
   <script defer src="/duel-charts.js?v=4160"></script>
   <script defer src="/account.js?v=4151"></script>
+  <script defer src="/tournament-profile.js?v=1"></script>
 </head>
 <body>
   <div id="site-header"></div>
@@ -23,10 +25,22 @@
       <div class="container">
         <p class="eyebrow">Compte joueur</p>
         <h1>Mon profil</h1>
-        <p>Ton compte Discord, ton compte Minecraft, ton grade et tes achats au même endroit.</p>
+        <p>Ton compte Discord, ton compte Minecraft, ton grade, tes tournois et tes achats au même endroit.</p>
       </div>
     </section>
     <section class="section compact"><div class="container"><div id="account-root"><div class="skeleton"></div></div></div></section>
+    <section class="section compact player-tournaments-section">
+      <div class="container">
+        <div class="player-tournaments-panel">
+          <div class="player-tournaments-head">
+            <span>Compétition</span>
+            <h2>Mes tournois</h2>
+            <p>Historique des tournois auxquels tu as participé et ton résultat final.</p>
+          </div>
+          <div id="account-tournaments-root"><div class="skeleton tournament-history-skeleton"></div></div>
+        </div>
+      </div>
+    </section>
   </main>
   <div id="site-footer"></div>
 </body>
