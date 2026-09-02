@@ -284,10 +284,74 @@ function mergePvpScoresIntoLobbySnapshot(incomingTournament, previousTournament)
     return mergeOneMatchFromPrevious(incoming, previous);
   });
 
-  return {
+  const mergedTournament = {
     ...incomingTournament,
     matches: mergedMatches,
   };
+
+  // Une fois la finale terminée, un snapshot Lobby légèrement en retard ne doit
+  // jamais faire revenir le tournoi en "running".
+  if (normalizeState(previousTournament.state, 'waiting') === 'finished') {
+    mergedTournament.state = 'finished';
+    mergedTournament.winner_uuid = cleanUuid(previousTournament.winner_uuid) || cleanUuid(mergedTournament.winner_uuid);
+    mergedTournament.registration_open = false;
+  }
+
+  return finalizeTournamentFromMatches(mergedTournament);
+}
+
+function mainFinalMatch(tournament) {
+  const matches = Array.isArray(tournament?.matches) ? tournament.matches : [];
+  const bracketMatches = matches.filter((match) => !Boolean(match?.third_place));
+  if (!bracketMatches.length) return null;
+
+  // L'auto-détection de finale est volontairement limitée à l'élimination
+  // directe. En double élimination / équipes, le manager Lobby reste la source
+  // de vérité pour l'état final.
+  if (normalizeFormat(tournament?.format || tournament?.format_key) !== 'single') return null;
+
+  const players = cleanInt(tournament?.players, 0, 0, 512);
+  const expectedFinalRound = players >= 2 ? Math.ceil(Math.log2(players)) : 1;
+  const finals = bracketMatches.filter(
+    (match) => cleanInt(match?.round ?? match?.round_no, 1, 1, 64) === expectedFinalRound,
+  );
+
+  // Un round 1 terminé dans un tournoi de 16 joueurs ne doit surtout pas être
+  // pris pour une finale : on attend le round théorique calculé sur le nombre
+  // réel de participants.
+  return finals.find((match) => cleanUuid(match?.player1_uuid) && cleanUuid(match?.player2_uuid)) || finals[0] || null;
+}
+
+function finalWinnerUuid(match) {
+  if (!match) return null;
+  const explicit = cleanUuid(match.winner_uuid);
+  if (explicit) return explicit;
+
+  if (normalizeState(match.state, 'pending') !== 'finished') return null;
+
+  const firstTo = cleanInt(match.first_to, 2, 1, 20);
+  const score1 = match.score1 == null ? 0 : cleanInt(match.score1, 0, 0, 20);
+  const score2 = match.score2 == null ? 0 : cleanInt(match.score2, 0, 0, 20);
+
+  if (score1 >= firstTo && score1 > score2) return cleanUuid(match.player1_uuid);
+  if (score2 >= firstTo && score2 > score1) return cleanUuid(match.player2_uuid);
+  return null;
+}
+
+function finalizeTournamentFromMatches(tournament) {
+  if (!tournament || typeof tournament !== 'object') return tournament;
+
+  const finalMatch = mainFinalMatch(tournament);
+  const winner = finalWinnerUuid(finalMatch);
+  const finalDone = finalMatch && normalizeState(finalMatch.state, 'pending') === 'finished';
+
+  if (finalDone && winner) {
+    tournament.state = 'finished';
+    tournament.winner_uuid = winner;
+    tournament.registration_open = false;
+  }
+
+  return tournament;
 }
 
 function pickScoreTarget(tournament, body) {
@@ -492,6 +556,7 @@ function installTournamentWebSync({ app, query, pool }) {
         if (previous) {
           tournament = mergePvpScoresIntoLobbySnapshot(tournament, previous);
         }
+        tournament = finalizeTournamentFromMatches(tournament);
 
         await upsertTournamentCore(client, tournament);
 
@@ -567,6 +632,7 @@ function installTournamentWebSync({ app, query, pool }) {
       }
 
       patchMatchScore(match, body);
+      tournament = finalizeTournamentFromMatches(tournament);
       tournament.updated_at = cleanString(body.updated_at, 80, new Date().toISOString());
 
       const client = await pool.connect();
@@ -575,9 +641,24 @@ function installTournamentWebSync({ app, query, pool }) {
 
         await client.query(
           `UPDATE duel_tournament_web_snapshots
-              SET snapshot=$2, updated_at=CURRENT_TIMESTAMP(3)
+              SET state=$2,
+                  snapshot=$3,
+                  updated_at=CURRENT_TIMESTAMP(3)
             WHERE tournament_id=$1`,
-          [selected.tournament_id, JSON.stringify(tournament)],
+          [selected.tournament_id, tournament.state, JSON.stringify(tournament)],
+        );
+
+        await client.query(
+          `UPDATE duel_tournaments
+              SET state=$2,
+                  winner_uuid=COALESCE($3, winner_uuid),
+                  finished_at=CASE
+                    WHEN $2='finished' THEN COALESCE(finished_at, CURRENT_TIMESTAMP(3))
+                    ELSE finished_at
+                  END,
+                  updated_at=CURRENT_TIMESTAMP(3)
+            WHERE tournament_id=$1`,
+          [selected.tournament_id, tournament.state, cleanUuid(tournament.winner_uuid)],
         );
 
         await client.query(
@@ -612,6 +693,8 @@ function installTournamentWebSync({ app, query, pool }) {
         match_id: match.id,
         score: [match.score1 ?? 0, match.score2 ?? 0],
         state: match.state,
+        tournament_state: tournament.state,
+        tournament_winner_uuid: cleanUuid(tournament.winner_uuid),
       });
     } catch (error) {
       console.error('[tournaments/match-score]', error);
@@ -636,14 +719,42 @@ function installTournamentWebSync({ app, query, pool }) {
         return res.status(404).json({ error: 'Aucun tournoi synchronisé.' });
       }
 
-      const snapshot = safeJsonParse(row.snapshot, null);
+      let snapshot = safeJsonParse(row.snapshot, null);
       if (!snapshot) {
         return res.status(500).json({ error: 'Snapshot tournoi invalide.' });
       }
 
+      snapshot = finalizeTournamentFromMatches(snapshot);
+
+      // Auto-réparation des anciens snapshots : si la finale est déjà finie mais
+      // que la colonne SQL est encore "running", la simple lecture de la page
+      // remet définitivement le tournoi à l'état finished.
+      if (normalizeState(snapshot.state, 'waiting') === 'finished' && normalizeState(row.state, 'waiting') !== 'finished') {
+        const repairedAt = new Date().toISOString();
+        snapshot.updated_at = snapshot.updated_at || repairedAt;
+        await query(
+          `UPDATE duel_tournament_web_snapshots
+              SET state='finished', snapshot=$2, updated_at=CURRENT_TIMESTAMP(3)
+            WHERE tournament_id=$1`,
+          [row.tournament_id, JSON.stringify(snapshot)],
+        );
+        await query(
+          `UPDATE duel_tournaments
+              SET state='finished',
+                  winner_uuid=COALESCE($2, winner_uuid),
+                  finished_at=COALESCE(finished_at, CURRENT_TIMESTAMP(3)),
+                  updated_at=CURRENT_TIMESTAMP(3)
+            WHERE tournament_id=$1`,
+          [row.tournament_id, cleanUuid(snapshot.winner_uuid)],
+        );
+        row.state = 'finished';
+        row.finished_at = row.finished_at || repairedAt;
+        archived = true;
+      }
+
       const catalog = await kitCatalog(query);
       const tournament = publicTournament(snapshot, row, catalog);
-      tournament.archived = archived;
+      tournament.archived = archived || normalizeState(snapshot.state, 'waiting') === 'finished';
 
       res.set('Cache-Control', 'no-store, max-age=0');
       return res.json({ tournament, archived });

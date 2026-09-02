@@ -1093,3 +1093,246 @@
     border-radius: 4px;
   }
 }
+
+
+/* ===== Tournament finish / champion ===== */
+.tournament-source[hidden] {
+  display: none !important;
+}
+
+.tournament-page.is-finished .tournament-hero {
+  background:
+    linear-gradient(90deg, rgba(8,7,11,.98) 0%, rgba(8,7,11,.9) 45%, rgba(8,7,11,.7) 100%),
+    radial-gradient(circle at 78% 30%, rgba(190,128,255,.3), transparent 42%);
+}
+
+.tournament-champion-banner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 56px 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 14px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(184,122,255,.38);
+  border-radius: 14px;
+  background:
+    linear-gradient(110deg, rgba(113,45,175,.2), rgba(17,14,22,.94) 42%, rgba(17,14,22,.94)),
+    radial-gradient(circle at 8% 50%, rgba(220,177,255,.2), transparent 30%);
+  box-shadow: 0 10px 35px rgba(0,0,0,.18), inset 0 1px rgba(255,255,255,.025);
+}
+
+.tournament-champion-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 0 38%, rgba(255,255,255,.055) 47%, transparent 56%);
+  transform: translateX(-120%);
+  animation: tournament-champion-shine 2.8s ease-out .35s 1;
+  pointer-events: none;
+}
+
+.tournament-champion-trophy {
+  font-size: 2rem;
+  text-align: center;
+  filter: drop-shadow(0 0 14px rgba(218,176,255,.3));
+}
+
+.tournament-champion-avatar .mc-player-head {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(204,164,255,.32);
+}
+
+.tournament-champion-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.tournament-champion-copy span {
+  color: #a886c3;
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.tournament-champion-copy strong {
+  overflow: hidden;
+  color: #f3e9ff;
+  font-size: 1.08rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-champion-copy small {
+  color: #8e8296;
+  font-size: .73rem;
+}
+
+.tournament-finish-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(5,4,8,.74);
+  backdrop-filter: blur(8px);
+  animation: tournament-overlay-in .28s ease-out both;
+}
+
+.tournament-finish-overlay.is-leaving {
+  pointer-events: none;
+  animation: tournament-overlay-out .38s ease-in both;
+}
+
+.tournament-finish-card {
+  position: relative;
+  z-index: 2;
+  width: min(420px, 94vw);
+  padding: 28px 26px 24px;
+  overflow: hidden;
+  border: 1px solid rgba(190,131,255,.5);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(164,91,255,.28), transparent 48%),
+    #100c15;
+  box-shadow: 0 24px 90px rgba(0,0,0,.55), 0 0 70px rgba(131,54,210,.12);
+  text-align: center;
+  animation: tournament-card-in .58s cubic-bezier(.2,.8,.2,1) both;
+}
+
+.tournament-finish-kicker,
+.tournament-finish-label {
+  color: #c79aff;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.tournament-finish-head {
+  margin: 20px auto 12px;
+}
+
+.tournament-finish-head .mc-player-head {
+  width: 92px;
+  height: 92px;
+  border-radius: 18px;
+  box-shadow: 0 0 0 1px rgba(210,169,255,.4), 0 0 45px rgba(154,81,235,.22);
+}
+
+.tournament-finish-card h2 {
+  margin: 5px 0 4px;
+  color: #fff;
+  font-size: clamp(1.8rem, 6vw, 2.65rem);
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+
+.tournament-finish-card p {
+  margin: 7px 0 0;
+  color: #918798;
+}
+
+.tournament-finish-score {
+  display: inline-flex;
+  margin-top: 15px;
+  padding: 7px 13px;
+  border: 1px solid #5d3b7a;
+  border-radius: 999px;
+  background: #1d1228;
+  color: #e2c5ff;
+  font-size: 1rem;
+}
+
+.tournament-finish-close {
+  width: 100%;
+  margin-top: 20px;
+  padding: 11px 14px;
+  border: 1px solid #654485;
+  border-radius: 10px;
+  background: #21142e;
+  color: #eadcff;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.tournament-finish-close:hover {
+  transform: translateY(-1px);
+  border-color: #8b5fb2;
+  background: #2a1839;
+}
+
+.tournament-finish-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tournament-finish-confetti i {
+  position: absolute;
+  left: calc(var(--x) * 1%);
+  top: -7vh;
+  width: var(--size);
+  height: calc(var(--size) * 1.8);
+  border-radius: 2px;
+  background: hsl(var(--hue) 78% 69%);
+  opacity: .9;
+  transform: rotate(calc(var(--i) * 19deg));
+  animation: tournament-confetti-fall var(--duration) linear var(--delay) both;
+}
+
+@keyframes tournament-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tournament-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes tournament-card-in {
+  from { opacity: 0; transform: translateY(18px) scale(.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes tournament-confetti-fall {
+  0% { transform: translate3d(0,-10vh,0) rotate(0deg); opacity: 0; }
+  10% { opacity: .95; }
+  100% { transform: translate3d(var(--drift),110vh,0) rotate(760deg); opacity: .72; }
+}
+
+@keyframes tournament-champion-shine {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+
+@media (max-width: 620px) {
+  .tournament-champion-banner {
+    grid-template-columns: 44px 44px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .tournament-champion-trophy { font-size: 1.55rem; }
+  .tournament-champion-avatar .mc-player-head { width: 40px; height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tournament-champion-banner::after,
+  .tournament-finish-overlay,
+  .tournament-finish-card,
+  .tournament-finish-confetti i {
+    animation: none !important;
+  }
+}

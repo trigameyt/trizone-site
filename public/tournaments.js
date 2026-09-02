@@ -130,6 +130,46 @@ function normalizedMatchState(value) {
   return 'waiting';
 }
 
+function mainFinalMatch(tournament = {}) {
+  const matches = Array.isArray(tournament.matches) ? tournament.matches : [];
+  const bracket = matches.filter((match) => !match?.third_place);
+  if (!bracket.length) return null;
+
+  const formatKey = String(tournament.format_key || '').toLowerCase();
+  const displayFormat = String(tournament.format || '').toLowerCase();
+  const isSingle = formatKey === 'single' || displayFormat.includes('élimination directe') || displayFormat.includes('elimination directe');
+  if (!isSingle) return null;
+
+  const players = Number(tournament.players || tournament.player_count || 0);
+  const expectedFinalRound = Number.isFinite(players) && players >= 2 ? Math.ceil(Math.log2(players)) : 1;
+  const finals = bracket.filter((match) => Number(match.round || match.round_no || 1) === expectedFinalRound);
+  return finals.find((match) => match?.player1 && match?.player2) || finals[0] || null;
+}
+
+function tournamentWinner(tournament = {}) {
+  const finalMatch = mainFinalMatch(tournament);
+  if (!finalMatch || normalizedMatchState(finalMatch.state) !== 'done') return null;
+
+  if (finalMatch.player1?.winner) return finalMatch.player1;
+  if (finalMatch.player2?.winner) return finalMatch.player2;
+
+  const p1Score = Number(finalMatch.player1?.score ?? -1);
+  const p2Score = Number(finalMatch.player2?.score ?? -1);
+  const firstTo = resolveFirstTo(finalMatch, tournament);
+  if (p1Score >= firstTo && p1Score > p2Score) return finalMatch.player1 || null;
+  if (p2Score >= firstTo && p2Score > p1Score) return finalMatch.player2 || null;
+  return null;
+}
+
+function resolvedTournamentState(tournament = {}) {
+  const explicit = normalizedState(tournament.state);
+  const finalMatch = mainFinalMatch(tournament);
+  if (finalMatch && normalizedMatchState(finalMatch.state) === 'done' && tournamentWinner(tournament)) {
+    return 'finished';
+  }
+  return explicit;
+}
+
 function stateLabel(state) {
   if (state === 'running') return 'En cours';
   if (state === 'finished') return 'Terminé';
@@ -394,8 +434,101 @@ function renderFeaturedMatch(tournament) {
   Trizone.bindMinecraftPlayerHeads(root);
 }
 
+let celebratedTournamentId = '';
+let celebrationCloseTimer = 0;
+
+function finalScoreText(tournament = {}) {
+  const finalMatch = mainFinalMatch(tournament);
+  if (!finalMatch) return '';
+  const a = finalMatch.player1?.score;
+  const b = finalMatch.player2?.score;
+  if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return '';
+  return `${Number(a)} - ${Number(b)}`;
+}
+
+function closeTournamentCelebration() {
+  const overlay = document.querySelector('.tournament-finish-overlay');
+  if (!overlay) return;
+  overlay.classList.add('is-leaving');
+  window.setTimeout(() => overlay.remove(), 420);
+}
+
+function showTournamentCelebration(tournament, winner) {
+  if (!winner?.username || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  const tournamentId = String(tournament.id || tournament.name || 'tournoi');
+  if (celebratedTournamentId === tournamentId) return;
+  celebratedTournamentId = tournamentId;
+
+  document.querySelector('.tournament-finish-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'tournament-finish-overlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+
+  const particles = Array.from({ length: 34 }, (_, index) => (
+    `<i style="--i:${index};--x:${(index * 37) % 100};--delay:${(index % 9) * 0.045}s;--size:${5 + (index % 4) * 2}px;--drift:${((index % 7) - 3) * 14}px;--hue:${258 + (index % 6) * 10};--duration:${2.4 + (index % 7) * 0.22}s"></i>`
+  )).join('');
+
+  overlay.innerHTML = `
+    <div class="tournament-finish-confetti" aria-hidden="true">${particles}</div>
+    <div class="tournament-finish-card">
+      <div class="tournament-finish-kicker">🏆 Tournoi terminé</div>
+      <div class="tournament-finish-head">${Trizone.minecraftPlayerHeadHtml(winner)}</div>
+      <div class="tournament-finish-label">Champion</div>
+      <h2>${Trizone.escapeHtml(Trizone.minecraftDisplayName(winner.username))}</h2>
+      <p>${Trizone.escapeHtml(tournament.name || 'Tournoi Trizone')}</p>
+      ${finalScoreText(tournament) ? `<strong class="tournament-finish-score">${Trizone.escapeHtml(finalScoreText(tournament))}</strong>` : ''}
+      <button type="button" class="tournament-finish-close">Voir le tableau</button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  Trizone.bindMinecraftPlayerHeads(overlay);
+
+  overlay.querySelector('.tournament-finish-close')?.addEventListener('click', closeTournamentCelebration);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeTournamentCelebration();
+  });
+
+  if (celebrationCloseTimer) clearTimeout(celebrationCloseTimer);
+  celebrationCloseTimer = window.setTimeout(closeTournamentCelebration, 7000);
+}
+
+function renderChampionBanner(tournament, state) {
+  const container = document.querySelector('.tournament-content > .container');
+  if (!container) return;
+
+  let banner = document.getElementById('tournament-champion-banner');
+  const winner = state === 'finished' ? tournamentWinner(tournament) : null;
+
+  if (!winner?.username) {
+    banner?.remove();
+    return;
+  }
+
+  if (!banner) {
+    banner = document.createElement('section');
+    banner.id = 'tournament-champion-banner';
+    banner.className = 'tournament-champion-banner';
+    container.insertBefore(banner, container.querySelector('.tournament-layout'));
+  }
+
+  banner.innerHTML = `
+    <div class="tournament-champion-trophy" aria-hidden="true">🏆</div>
+    <div class="tournament-champion-avatar">${Trizone.minecraftPlayerHeadHtml(winner)}</div>
+    <div class="tournament-champion-copy">
+      <span>Champion du tournoi</span>
+      <strong>${Trizone.escapeHtml(Trizone.minecraftDisplayName(winner.username))}</strong>
+      <small>${Trizone.escapeHtml(tournament.name || 'Tournoi Trizone')}${finalScoreText(tournament) ? ` · Finale ${Trizone.escapeHtml(finalScoreText(tournament))}` : ''}</small>
+    </div>`;
+
+  Trizone.bindMinecraftPlayerHeads(banner);
+  showTournamentCelebration(tournament, winner);
+}
+
 function renderTournament(tournament, { preview = false } = {}) {
-  const state = normalizedState(tournament.state);
+  const state = resolvedTournamentState(tournament);
   const kit = tournament.kit || { name: 'Variable', icon: 'IRON_SWORD' };
   const firstTo = resolveFirstTo({}, tournament);
   const players = Number(tournament.players || tournament.player_count || 0);
@@ -422,7 +555,7 @@ function renderTournament(tournament, { preview = false } = {}) {
     tournament.format || 'Élimination directe';
 
   document.getElementById('tournament-best-of').textContent = ftLongLabel(firstTo);
-  document.getElementById('tournament-phase').textContent = tournament.phase || 'À déterminer';
+  document.getElementById('tournament-phase').textContent = state === 'finished' ? 'Terminé' : (tournament.phase || 'À déterminer');
   document.getElementById('tournament-players').textContent =
     maxPlayers ? `${players} / ${maxPlayers}` : String(players || '—');
 
@@ -433,13 +566,23 @@ function renderTournament(tournament, { preview = false } = {}) {
     formatDate(tournament.started_at || tournament.startedAt);
 
   document.getElementById('tournament-progress').textContent =
-    matches.length ? `${completed} / ${matches.length} matchs terminés` : 'Aucun match';
+    matches.length ? (state === 'finished' ? `Terminé · ${completed} / ${matches.length} matchs` : `${completed} / ${matches.length} matchs terminés`) : 'Aucun match';
 
   const source = document.getElementById('tournament-source');
   source.hidden = !preview;
 
+  const tabNote = document.querySelector('.tournament-tab-note');
+  if (tabNote) {
+    tabNote.textContent = preview
+      ? 'Exemple en attente de la synchronisation Minecraft en direct.'
+      : (state === 'finished' ? 'Tournoi terminé · dernier résultat synchronisé.' : 'Synchronisation Minecraft en direct.');
+  }
+
+  document.querySelector('.tournament-page')?.classList.toggle('is-finished', state === 'finished');
+
   renderBracket(tournament);
   renderFeaturedMatch(tournament);
+  renderChampionBanner(tournament, state);
 }
 
 let lastTournamentFingerprint = '';
