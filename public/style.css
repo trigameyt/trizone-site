@@ -1099,5 +1099,98 @@ body.modal-open { overflow:hidden; }
   .duel-account-head{width:48px;height:48px;min-width:48px}
 }
 
+/* =========================
+   TRIZONE - GLOBAL SCROLLBARS
+   A coller tout en bas de public/style.css
+   ========================= */
 
+:root {
+  --tz-scrollbar-size: 12px;
+  --tz-scrollbar-track: rgba(10, 7, 18, 0.96);
+  --tz-scrollbar-track-2: rgba(20, 12, 34, 0.96);
+  --tz-scrollbar-thumb-1: #a855f7;
+  --tz-scrollbar-thumb-2: #7c3aed;
+  --tz-scrollbar-thumb-3: #5b21b6;
+  --tz-scrollbar-border: rgba(255, 255, 255, 0.06);
+  --tz-scrollbar-glow: rgba(168, 85, 247, 0.28);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tz-scrollbar-thumb-2) var(--tz-scrollbar-track);
+}
+
+/* Chrome / Edge / Opera / Brave */
+*::-webkit-scrollbar {
+  width: var(--tz-scrollbar-size);
+  height: var(--tz-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background:
+    linear-gradient(
+      180deg,
+      var(--tz-scrollbar-track) 0%,
+      var(--tz-scrollbar-track-2) 100%
+    );
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(168, 85, 247, 0.08),
+    inset 0 0 18px rgba(0, 0, 0, 0.35);
+}
+
+*::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(
+      180deg,
+      var(--tz-scrollbar-thumb-1) 0%,
+      var(--tz-scrollbar-thumb-2) 48%,
+      var(--tz-scrollbar-thumb-3) 100%
+    );
+  border-radius: 999px;
+  border: 2px solid rgba(11, 7, 16, 0.95);
+  box-shadow:
+    inset 0 0 0 1px var(--tz-scrollbar-border),
+    0 0 10px var(--tz-scrollbar-glow);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background:
+    linear-gradient(
+      180deg,
+      #c084fc 0%,
+      #9333ea 50%,
+      #6d28d9 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 0 14px rgba(168, 85, 247, 0.42);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background:
+    linear-gradient(
+      180deg,
+      #d8b4fe 0%,
+      #a855f7 50%,
+      #7c3aed 100%
+    );
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(10, 7, 18, 0.98);
+}
+
+/* Version un peu plus fine dans les panneaux / modales / listes */
+.leaderboard-list::-webkit-scrollbar,
+.duel-profile-dialog::-webkit-scrollbar,
+.profile-panel::-webkit-scrollbar,
+.profile-layout::-webkit-scrollbar,
+.tournament-bracket-shell::-webkit-scrollbar,
+.tournament-bracket-wrapper::-webkit-scrollbar,
+.tournament-profile-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
 /* v4.1.9 — downward glow + parasite junction cleanup */
