@@ -440,21 +440,20 @@ function installStreamerSystem({ app, query, baseUrl }) {
     const online = await isMinecraftPlayerOnline(discordId);
     if (!online) return false;
 
-    let stream = null;
-    if (link.stream_id) {
-      stream = {
-        id: link.stream_id,
-        login: link.twitch_login,
-        displayName: link.twitch_display_name,
-        title: link.stream_title || '',
-        gameName: link.stream_game_name || '',
-        thumbnailUrl: link.stream_thumbnail_url || '',
-        startedAt: link.stream_started_at || null,
-        viewerCount: Number(link.stream_viewer_count || 0),
-      };
+    const stream = await getStream(link.twitch_user_id, 6);
+    if (!stream) {
+      console.warn(`[streamer] Live Twitch detecte, donnees Helix pas encore disponibles pour ${link.twitch_user_id}.`);
+      return false;
     }
-    if (!stream?.id) stream = await getStream(link.twitch_user_id, 2);
-    if (!stream) return false;
+
+    await query(
+      `UPDATE twitch_links
+       SET stream_id=$2, stream_title=$3, stream_game_name=$4,
+           stream_thumbnail_url=$5, stream_started_at=$6, stream_viewer_count=$7,
+           updated_at=NOW()
+       WHERE discord_id=$1`,
+      [discordId, stream.id, stream.title, stream.gameName, stream.thumbnailUrl, toMysqlDateTime(stream.startedAt), stream.viewerCount],
+    );
 
     const existing = await query(
       `SELECT id, discord_sent FROM streamer_announcements WHERE stream_id=$1 LIMIT 1`,
