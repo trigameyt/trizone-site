@@ -77,7 +77,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
     const cfg = bridgeConfig();
     const supplied = String(req.get('x-trizone-bridge-key') || '');
     if (!cfg.key || !safeEqual(supplied, cfg.key)) {
-      return res.status(401).json({ error: 'Bridge non autorisÃ©.' });
+      return res.status(401).json({ error: 'Bridge non autorisé.' });
     }
     next();
   }
@@ -101,7 +101,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
 
   async function getTwitchAppToken(force = false) {
     const cfg = twitchConfig();
-    if (!cfg.clientId || !cfg.clientSecret) throw new Error('Twitch non configurÃ©.');
+    if (!cfg.clientId || !cfg.clientSecret) throw new Error('Twitch non configuré.');
 
     const now = Date.now();
     if (!force && appTokenCache.token && now < appTokenCache.expiresAt - 60_000) {
@@ -210,7 +210,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
   async function createEventSub(type, twitchUserId) {
     const cfg = twitchConfig();
     if (!cfg.eventSubSecret || cfg.eventSubSecret.length < 10 || cfg.eventSubSecret.length > 100) {
-      throw new Error('TWITCH_EVENTSUB_SECRET doit contenir entre 10 et 100 caractÃ¨res.');
+      throw new Error('TWITCH_EVENTSUB_SECRET doit contenir entre 10 et 100 caractères.');
     }
     try {
       const data = await twitchHelix('/eventsub/subscriptions', {
@@ -229,7 +229,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
       return Array.isArray(data.data) ? String(data.data[0]?.id || '') : '';
     } catch (error) {
       if (error.status === 409) {
-        console.warn(`[streamer] EventSub ${type} existe dÃ©jÃ  pour ${twitchUserId}.`);
+        console.warn(`[streamer] EventSub ${type} existe déjà pour ${twitchUserId}.`);
         return '';
       }
       throw error;
@@ -285,16 +285,16 @@ function installStreamerSystem({ app, query, baseUrl }) {
 
     const embed = {
       color: 0x9146ff,
-      title: `ðŸ”´ ${link.twitch_display_name || stream.displayName || link.twitch_login} est en LIVE !`,
+      title: `🔴 ${link.twitch_display_name || stream.displayName || link.twitch_login} est en LIVE !`,
       url: twitchUrl,
       description: stream.title || 'Live Twitch en cours',
       thumbnail: link.twitch_profile_image_url ? { url: link.twitch_profile_image_url } : undefined,
       image: thumbnail ? { url: thumbnail } : undefined,
       fields: [
-        ...(stream.gameName ? [{ name: 'CatÃ©gorie', value: stream.gameName, inline: true }] : []),
+        ...(stream.gameName ? [{ name: 'Catégorie', value: stream.gameName, inline: true }] : []),
         ...(Number.isFinite(stream.viewerCount) ? [{ name: 'Spectateurs', value: String(stream.viewerCount), inline: true }] : []),
       ],
-      footer: { text: 'Trizone â€¢ Twitch' },
+      footer: { text: 'Trizone • Twitch' },
       timestamp: new Date().toISOString(),
     };
 
@@ -513,7 +513,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
     const cfg = discordConfig();
     if (validSnowflake(cfg.liveRoleId)) {
       try { await setDiscordRole(link.discord_id, cfg.liveRoleId, true); }
-      catch (error) { console.warn('[streamer] RÃ´le Discord En Live:', error.message); }
+      catch (error) { console.warn('[streamer] Rôle Discord En Live:', error.message); }
     }
 
     await maybeAnnounceForDiscord(link.discord_id);
@@ -542,7 +542,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
     const cfg = discordConfig();
     if (validSnowflake(cfg.liveRoleId)) {
       try { await setDiscordRole(link.discord_id, cfg.liveRoleId, false); }
-      catch (error) { console.warn('[streamer] Retrait rÃ´le Discord En Live:', error.message); }
+      catch (error) { console.warn('[streamer] Retrait rôle Discord En Live:', error.message); }
     }
   }
 
@@ -613,7 +613,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
   app.get('/auth/twitch', requireDiscordUser, (req, res) => {
     const cfg = twitchConfig();
     if (!cfg.clientId || !cfg.clientSecret || !cfg.redirectUri) {
-      return res.status(503).send('Twitch OAuth non configurÃ©.');
+      return res.status(503).send('Twitch OAuth non configuré.');
     }
 
     const state = crypto.randomBytes(24).toString('hex');
@@ -636,7 +636,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
       delete req.session.twitchOauthState;
       const receivedState = String(req.query.state || '');
       if (!expectedState || !safeEqual(expectedState, receivedState)) {
-        return res.status(400).send('Ã‰tat OAuth Twitch invalide.');
+        return res.status(400).send('État OAuth Twitch invalide.');
       }
       if (req.query.error) {
         return res.redirect(`/account.html?twitch=${encodeURIComponent(String(req.query.error))}`);
@@ -651,7 +651,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
         [identity.id, discordId],
       );
       if (conflict.rows[0]) {
-        return res.status(409).send('Ce compte Twitch est dÃ©jÃ  liÃ© Ã  un autre compte Trizone.');
+        return res.status(409).send('Ce compte Twitch est déjà lié à un autre compte Trizone.');
       }
 
       const previous = await query(
@@ -680,7 +680,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
       const cfg = discordConfig();
       if (validSnowflake(cfg.streamerRoleId)) {
         try { await setDiscordRole(discordId, cfg.streamerRoleId, true); }
-        catch (error) { console.warn('[streamer] RÃ´le Discord Streamer:', error.message); }
+        catch (error) { console.warn('[streamer] Rôle Discord Streamer:', error.message); }
       }
       await queueMinecraftAction(discordId, 'add');
 
@@ -713,7 +713,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
         );
         if (validSnowflake(cfg.liveRoleId)) {
           try { await setDiscordRole(discordId, cfg.liveRoleId, true); }
-          catch (error) { console.warn('[streamer] RÃ´le Discord En Live:', error.message); }
+          catch (error) { console.warn('[streamer] Rôle Discord En Live:', error.message); }
         }
         await maybeAnnounceForDiscord(discordId);
       }
@@ -739,7 +739,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
       for (const roleId of [cfg.liveRoleId, cfg.streamerRoleId]) {
         if (validSnowflake(roleId)) {
           try { await setDiscordRole(discordId, roleId, false); }
-          catch (error) { console.warn('[streamer] Retrait rÃ´le Discord:', error.message); }
+          catch (error) { console.warn('[streamer] Retrait rôle Discord:', error.message); }
         }
       }
 
@@ -748,7 +748,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
       res.json({ ok: true, linked: false });
     } catch (error) {
       console.error('[streamer] Unlink Twitch:', error);
-      res.status(500).json({ error: 'Impossible de dÃ©lier Twitch.' });
+      res.status(500).json({ error: 'Impossible de délier Twitch.' });
     }
   });
 
@@ -764,7 +764,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
     }
 
     if (messageType === 'revocation') {
-      console.warn('[streamer] EventSub rÃ©voquÃ©:', payload.subscription?.status, payload.subscription?.id);
+      console.warn('[streamer] EventSub révoqué:', payload.subscription?.status, payload.subscription?.id);
       return res.sendStatus(204);
     }
 
@@ -946,7 +946,7 @@ function installStreamerSystem({ app, query, baseUrl }) {
   }, 10 * 60_000);
   cleanupTimer.unref?.();
 
-  console.log('[streamer] Twitch / Discord / Minecraft streamer system chargÃ©.');
+  console.log('[streamer] Twitch / Discord / Minecraft streamer system chargé.');
 }
 
 module.exports = { installStreamerSystem };
